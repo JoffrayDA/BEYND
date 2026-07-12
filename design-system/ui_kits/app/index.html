@@ -1,0 +1,85 @@
+<!-- @dsCard group="App" viewport="380x760" name="BEYND — Chat App" subtitle="Chat home + coach select + dashboard, 3 theme switch" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>
+  body { margin: 0; background: #2b2b2b; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: var(--font-sans); }
+  .device { width: 380px; height: 760px; border-radius: 40px; background: #000; padding: 10px; box-shadow: 0 30px 60px rgba(0,0,0,0.5); }
+  .screen { width: 100%; height: 100%; border-radius: 30px; overflow: hidden; background: var(--color-bg); display: flex; flex-direction: column; transition: background .2s; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="CoachHeader.jsx"></script>
+<script type="text/babel" src="TabBar.jsx"></script>
+<script type="text/babel" src="ChatScreen.jsx"></script>
+<script type="text/babel" src="DashboardScreen.jsx"></script>
+<script type="text/babel" src="CoachSelectScreen.jsx"></script>
+<script type="text/babel">
+const COACHES = [
+  { id: 'cool-jeune', name: 'Max', tagline: 'Cool jeune' },
+  { id: 'pote-cash', name: 'Sam', tagline: 'Pote cash' },
+  { id: 'data-nerd', name: 'Nova', tagline: 'Data-Nerd' },
+];
+
+const SEED_MESSAGES = {
+  'cool-jeune': [
+    { from: 'coach', time: '09:14', text: 'Alors, cette semaine ? On fait le point 💪' },
+    { from: 'user', time: '09:15', text: "J'ai loupé 2 séances, désolé" },
+    { from: 'coach', time: '09:15', text: "T'inquiète, ça arrive. On reprend demain matin, 7h ?" },
+    { from: 'user', time: '09:16', text: 'Ça marche' },
+  ],
+  'pote-cash': [
+    { from: 'coach', time: '09:14', text: "T'as loupé 2 séances cette semaine. On fait quoi." },
+    { from: 'user', time: '09:15', text: 'Ouais je sais, la semaine a été chargée' },
+    { from: 'coach', time: '09:15', text: "Ok. Demain 7h, séance jambes, tu la fais. Confirme ici." },
+    { from: 'user', time: '09:16', text: 'Confirmé' },
+  ],
+  'data-nerd': [
+    { from: 'coach', time: '09:14', text: 'Adhérence hebdo : 60% (3/5 séances). Tendance poids : -0.5kg/sem, stable.' },
+    { from: 'user', time: '09:15', text: "J'ai loupé 2 séances" },
+    { from: 'coach', time: '09:15', text: "Noté. Si on maintient 60% d'adhérence, l'objectif S12 glisse de 9 jours. On corrige demain ?" },
+    { from: 'user', time: '09:16', text: 'Oui' },
+  ],
+};
+
+function App() {
+  const [theme, setTheme] = React.useState('cool-jeune');
+  const [tab, setTab] = React.useState('chat');
+  const [messages, setMessages] = React.useState(SEED_MESSAGES['cool-jeune']);
+  const [input, setInput] = React.useState('');
+  const coach = COACHES.find((c) => c.id === theme);
+
+  React.useEffect(() => { setMessages(SEED_MESSAGES[theme]); }, [theme]);
+
+  const onSend = () => {
+    if (!input.trim()) return;
+    setMessages((m) => [...m, { from: 'user', time: 'now', text: input }]);
+    setInput('');
+  };
+
+  return (
+    <div className="device">
+      <div className="screen" data-theme={theme}>
+        <CoachHeader name={coach.name} tagline={coach.tagline} avatarInitials={coach.name[0]} onOpenDashboard={() => setTab('dashboard')} />
+        <div style={{ flex: 1, minHeight: 0 }}>
+          {tab === 'chat' && <ChatScreen theme={theme} messages={messages} input={input} setInput={setInput} onSend={onSend} />}
+          {tab === 'dashboard' && <DashboardScreen />}
+          {tab === 'history' && <DashboardScreen />}
+          {tab === 'coach' && <CoachSelectScreen active={theme} onSelect={(id) => { setTheme(id); setTab('chat'); }} />}
+        </div>
+        <TabBar active={tab} onChange={setTab} />
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

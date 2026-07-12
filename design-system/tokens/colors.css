@@ -1,0 +1,147 @@
+/* =========================================================================
+   BEYND — Color tokens
+   Base palette + semantic aliases. Three coach themes swap semantic values
+   via [data-theme]. Default (no attribute) = Coach 1 "Cool jeune".
+   Apply a theme by setting data-theme="cool-jeune" | "pote-cash" | "data-nerd"
+   on <html> or any container.
+   ========================================================================= */
+
+:root {
+  /* ---- Base palette : raw hues, not for direct use in UI ---- */
+  --base-cream-50: #FBF7EE;
+  --base-cream-100: #F7F1E7;
+  --base-cream-200: #EFE6D2;
+  --base-cream-300: #E7DCC8;
+  --base-ink-900: #241B14;
+  --base-ink-700: #4A3F32;
+  --base-ink-500: #7A6F5F;
+
+  --base-orange-600: #C1440E;
+  --base-orange-700: #9C360A;
+  --base-mustard-500: #E0A72E;
+  --base-brick-600: #B0281A;
+
+  --base-white: #FFFFFF;
+  --base-gray-50: #F7F7F8;
+  --base-gray-100: #EFEFF1;
+  --base-gray-200: #E4E4E7;
+  --base-gray-400: #9AA0AC;
+  --base-gray-600: #6B7078;
+  --base-gray-900: #0F1115;
+
+  --base-blue-600: #155EEF;
+  --base-blue-700: #0F45B3;
+  --base-red-500: #E5484D;
+  --base-green-600: #12A150;
+
+  --base-carbon-950: #0B0D12;
+  --base-carbon-900: #14171F;
+  --base-carbon-800: #1C202B;
+  --base-carbon-700: #262B38;
+  --base-fog-200: #E7EAF0;
+  --base-fog-400: #8B93A5;
+
+  --base-cyan-400: #00E5FF;
+  --base-magenta-400: #FF2FD0;
+  --base-acid-400: #9BFF3B;
+
+  /* ---- Neutral semantic (theme-independent) ---- */
+  --color-danger: #E5484D;
+  --color-warning: #E0A72E;
+  --color-success: #12A150;
+  --color-overlay: rgba(10, 12, 16, 0.55);
+
+  /* =======================================================================
+     Theme: Coach 1 — "Cool jeune"  (default)
+     Cream / off-white + burnt orange, mustard, brick. Warm, energetic.
+     ======================================================================= */
+  --color-bg: var(--base-cream-100);
+  --color-bg-subtle: var(--base-cream-50);
+  --color-surface: var(--base-white);
+  --color-surface-raised: #FFFDF8;
+  --color-border: var(--base-cream-300);
+  --color-border-strong: var(--base-ink-700);
+
+  --color-text: var(--base-ink-900);
+  --color-text-muted: var(--base-ink-500);
+  --color-text-on-primary: var(--base-white);
+  --color-text-on-accent: var(--base-ink-900);
+
+  --color-primary: var(--base-orange-600);
+  --color-primary-hover: var(--base-orange-700);
+  --color-primary-press: #7C2A08;
+  --color-accent: var(--base-mustard-500);
+  --color-accent-2: var(--base-brick-600);
+
+  --color-bubble-user: var(--base-orange-600);
+  --color-bubble-user-text: var(--base-white);
+  --color-bubble-coach: var(--base-white);
+  --color-bubble-coach-text: var(--base-ink-900);
+
+  --coach-name: "Max"; /* @kind other */
+  --coach-swatch: var(--base-orange-600);
+}
+
+/* =======================================================================
+   Theme: Coach 2 — "Pote cash"
+   Clean white, Notion/Linear light mode. Direct, punchy accents.
+   ======================================================================= */
+[data-theme="pote-cash"] {
+  --color-bg: var(--base-white);
+  --color-bg-subtle: var(--base-gray-50);
+  --color-surface: var(--base-white);
+  --color-surface-raised: var(--base-white);
+  --color-border: var(--base-gray-200);
+  --color-border-strong: var(--base-gray-900);
+
+  --color-text: var(--base-gray-900);
+  --color-text-muted: var(--base-gray-600);
+  --color-text-on-primary: var(--base-white);
+  --color-text-on-accent: var(--base-white);
+
+  --color-primary: var(--base-blue-600);
+  --color-primary-hover: var(--base-blue-700);
+  --color-primary-press: #0B3585;
+  --color-accent: var(--base-red-500);
+  --color-accent-2: var(--base-green-600);
+
+  --color-bubble-user: var(--base-blue-600);
+  --color-bubble-user-text: var(--base-white);
+  --color-bubble-coach: var(--base-gray-50);
+  --color-bubble-coach-text: var(--base-gray-900);
+
+  --coach-name: "Sam"; /* @kind other */
+  --coach-swatch: var(--base-blue-600);
+}
+
+/* =======================================================================
+   Theme: Coach 3 — "Data-Nerd"
+   Dark mode, neon accents. Late-night dashboard feel.
+   ======================================================================= */
+[data-theme="data-nerd"] {
+  --color-bg: var(--base-carbon-950);
+  --color-bg-subtle: var(--base-carbon-900);
+  --color-surface: var(--base-carbon-900);
+  --color-surface-raised: var(--base-carbon-800);
+  --color-border: var(--base-carbon-700);
+  --color-border-strong: var(--base-fog-200);
+
+  --color-text: var(--base-fog-200);
+  --color-text-muted: var(--base-fog-400);
+  --color-text-on-primary: var(--base-carbon-950);
+  --color-text-on-accent: var(--base-carbon-950);
+
+  --color-primary: var(--base-cyan-400);
+  --color-primary-hover: #33ecff;
+  --color-primary-press: #00b8cc;
+  --color-accent: var(--base-magenta-400);
+  --color-accent-2: var(--base-acid-400);
+
+  --color-bubble-user: var(--base-cyan-400);
+  --color-bubble-user-text: var(--base-carbon-950);
+  --color-bubble-coach: var(--base-carbon-800);
+  --color-bubble-coach-text: var(--base-fog-200);
+
+  --coach-name: "Nova"; /* @kind other */
+  --coach-swatch: var(--base-cyan-400);
+}

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Coach Select Screen" description="BEYND coach-picker screen — hover/select shifts the whole page theme" -->
+<helmet>
+  <script src="./ds-base.js"></script>
+  <script src="../../assets/image-slot.js"></script>
+</helmet>
+
+<div style="min-height:100vh;padding:64px 24px;display:flex;flex-direction:column;align-items:center;transition:background var(--duration-slow) var(--ease-standard);background:var(--color-bg)" data-theme="{{ activeTheme }}">
+
+  <div style="text-align:center;max-width:560px;margin-bottom:48px">
+    <div style="font-family:var(--font-display);font-weight:700;font-size:var(--text-3xl);color:var(--color-text);letter-spacing:var(--tracking-tight)">Choisis ton coach</div>
+    <div style="font-family:var(--font-sans);font-size:var(--text-md);color:var(--color-text-muted);margin-top:10px">Chaque coach a sa personnalité et son propre univers visuel.</div>
+  </div>
+
+  <div style="display:flex;gap:24px;flex-wrap:wrap;justify-content:center;max-width:1040px">
+    <sc-for list="{{ coaches }}" as="c" hint-placeholder-count="3">
+      <sc-if value="{{ c.isSelected }}" hint-placeholder-val="{{ false }}">
+        <div
+          data-theme="{{ c.id }}"
+          onMouseEnter="{{ c.onHover }}"
+          onMouseLeave="{{ onLeave }}"
+          onClick="{{ c.onSelect }}"
+          style="width:280px;background:var(--color-surface);border:1.5px solid var(--color-primary);border-radius:var(--radius-xl);padding:28px 24px;display:flex;flex-direction:column;align-items:center;text-align:center;cursor:pointer;box-shadow:var(--shadow-md);transition:box-shadow var(--duration-base) var(--ease-out)"
+          style-hover="box-shadow:var(--shadow-lg)"
+        >
+          <div style="width:140px;height:140px;border-radius:50%;border:3px solid var(--color-primary);padding:4px;margin-bottom:18px;box-shadow:var(--shadow-sm)">
+            <image-slot id="{{ c.avatarId }}" shape="circle" placeholder="{{ c.avatarPlaceholder }}"></image-slot>
+          </div>
+          <div style="font-family:var(--font-display);font-weight:700;font-size:var(--text-xl);color:var(--color-text)">{{ c.name }}</div>
+          <div style="font-family:var(--font-sans);font-weight:600;font-size:var(--text-xs);text-transform:uppercase;letter-spacing:var(--tracking-wide);color:var(--color-text-muted);margin-top:2px">{{ c.persona }}</div>
+          <div style="font-family:var(--font-sans);font-size:var(--text-sm);color:var(--color-text-muted);margin-top:14px;line-height:var(--leading-snug);min-height:44px">{{ c.tagline }}</div>
+          <div style="display:flex;gap:8px;margin:18px 0">
+            <span style="width:16px;height:16px;border-radius:50%;background:var(--color-primary);box-shadow:var(--shadow-xs)"></span>
+            <span style="width:16px;height:16px;border-radius:50%;background:var(--color-accent);box-shadow:var(--shadow-xs)"></span>
+            <span style="width:16px;height:16px;border-radius:50%;background:var(--color-accent-2);box-shadow:var(--shadow-xs)"></span>
+          </div>
+          <x-import component-from-global-scope="{{ dsNamespace }}.Button" variant="primary" onClick="{{ c.onSelect }}" hint-size="120px,44px">Choisir</x-import>
+        </div>
+      </sc-if>
+      <sc-if value="{{ c.isNotSelected }}" hint-placeholder-val="{{ true }}">
+        <div
+          data-theme="{{ c.id }}"
+          onMouseEnter="{{ c.onHover }}"
+          onMouseLeave="{{ onLeave }}"
+          onClick="{{ c.onSelect }}"
+          style="width:280px;background:var(--color-surface);border:1.5px solid var(--color-border);border-radius:var(--radius-xl);padding:28px 24px;display:flex;flex-direction:column;align-items:center;text-align:center;cursor:pointer;box-shadow:var(--shadow-xs);transition:box-shadow var(--duration-base) var(--ease-out)"
+          style-hover="box-shadow:var(--shadow-lg)"
+        >
+          <div style="width:140px;height:140px;border-radius:50%;border:3px solid var(--color-primary);padding:4px;margin-bottom:18px;box-shadow:var(--shadow-sm)">
+            <image-slot id="{{ c.avatarId }}" shape="circle" placeholder="{{ c.avatarPlaceholder }}"></image-slot>
+          </div>
+          <div style="font-family:var(--font-display);font-weight:700;font-size:var(--text-xl);color:var(--color-text)">{{ c.name }}</div>
+          <div style="font-family:var(--font-sans);font-weight:600;font-size:var(--text-xs);text-transform:uppercase;letter-spacing:var(--tracking-wide);color:var(--color-text-muted);margin-top:2px">{{ c.persona }}</div>
+          <div style="font-family:var(--font-sans);font-size:var(--text-sm);color:var(--color-text-muted);margin-top:14px;line-height:var(--leading-snug);min-height:44px">{{ c.tagline }}</div>
+          <div style="display:flex;gap:8px;margin:18px 0">
+            <span style="width:16px;height:16px;border-radius:50%;background:var(--color-primary);box-shadow:var(--shadow-xs)"></span>
+            <span style="width:16px;height:16px;border-radius:50%;background:var(--color-accent);box-shadow:var(--shadow-xs)"></span>
+            <span style="width:16px;height:16px;border-radius:50%;background:var(--color-accent-2);box-shadow:var(--shadow-xs)"></span>
+          </div>
+          <x-import component-from-global-scope="{{ dsNamespace }}.Button" variant="primary" onClick="{{ c.onSelect }}" hint-size="120px,44px">Choisir</x-import>
+        </div>
+      </sc-if>
+    </sc-for>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { hovered: null, selected: 'cool-jeune' };
+
+  hover(id) { this.setState({ hovered: id }); }
+  leave() { this.setState({ hovered: null }); }
+  select(id) { this.setState({ selected: id }); }
+
+  renderVals() {
+    const activeTheme = this.state.hovered || this.state.selected || 'cool-jeune';
+    const defs = [
+      {
+        id: 'data-nerd',
+        name: 'Nova',
+        persona: 'Data-Nerd',
+        tagline: 'Les chiffres ne mentent pas. Analysons-les ensemble.',
+        avatarId: 'coach-avatar-data-nerd',
+        avatarPlaceholder: 'Portrait 3D stylisé — Nova, scientifique analytique, expression concentrée',
+      },
+      {
+        id: 'cool-jeune',
+        name: 'Max',
+        persona: 'Cool Jeune',
+        tagline: 'On y va tranquille mais on y va sérieux.',
+        avatarId: 'coach-avatar-cool-jeune',
+        avatarPlaceholder: 'Portrait 3D stylisé — Max, influenceur fit fun, sourire motivant',
+      },
+      {
+        id: 'pote-cash',
+        name: 'Sam',
+        persona: 'Pote Cash',
+        tagline: 'Pas de bullshit. Tu bosses ou tu bosses pas.',
+        avatarId: 'coach-avatar-pote-cash',
+        avatarPlaceholder: 'Portrait 3D stylisé — Sam, pote direct, expression blasée-amusée',
+      },
+    ];
+
+    const coaches = defs.map((c) => {
+      const isSelected = this.state.selected === c.id;
+      return {
+        ...c,
+        onHover: () => this.hover(c.id),
+        onSelect: () => this.select(c.id),
+        isSelected,
+        isNotSelected: !isSelected,
+      };
+    });
+
+    return {
+      coaches,
+      activeTheme,
+      onLeave: () => this.leave(),
+      dsNamespace: 'BEYNDDesignSystem_ae2808',
+    };
+  }
+}
+
+</script>
+</body>
+</html>
