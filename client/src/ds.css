@@ -1,0 +1,40 @@
+/* Pull in the exported BEYND design system (tokens + base). */
+@import '../../design-system/styles.css';
+
+:root { color-scheme: light dark; }
+
+#root {
+  min-height: 100dvh;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Mobile-first app frame, centered on wide screens. */
+.app-frame {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  position: relative;
+}
+
+.tabbar {
+  display: flex;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar button {
+  flex: 1;
+  padding: 12px;
+  background: transparent;
+  border: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.tabbar button[data-active="true"] { color: var(--color-primary); }
