@@ -8,9 +8,9 @@
 |---|---|---|
 | Frontend | **React + Vite**, PWA (`vite-plugin-pwa`) | Design-system déjà en composants React (JSX) + tokens CSS. PWA = installable, mobile-first, ouvre la porte au push post-MVP sans changer de stack. |
 | Styling | **CSS tokens du design-system** (`data-theme`) | Thèmes par coach déjà définis (`tokens/colors.css`). Rien à réinventer. |
-| Backend | **Node léger** (Hono ou Express), serverless-friendly | La clé API Anthropic **ne doit jamais être côté client** → un proxy serveur est obligatoire, même en mono-user. Sert aussi la persistance. |
+| Backend | **Node léger** (Hono ou Express), serverless-friendly | La clé API LLM **ne doit jamais être côté client** → un proxy serveur est obligatoire, même en mono-user. Sert aussi la persistance. |
 | DB | **SQLite** (`better-sqlite3`) | Mono-user, zéro infra. Schéma pensé pour migrer vers Postgres quand multi-user arrive. |
-| LLM | **Claude API (Anthropic)** — `claude-sonnet-5` par défaut | Bon équilibre coût/latence pour du chat volumineux + génération structurée. `claude-opus-4-8` en option pour la génération de plan si besoin de plus de finesse. |
+| LLM | **Gemini API (Google AI Studio)** — `gemini-2.5-flash` par défaut | Free tier généreux, bon coût/latence pour du chat volumineux + function calling pour la génération structurée. `gemini-2.5-pro` en option pour la génération de plan si besoin de plus de finesse. |
 
 **Mobile-first** : layout pensé téléphone d'abord, chat = surface fixe (composer en
 bas, header coach en haut, historique scroll au milieu), écrans secondaires via bottom
@@ -70,7 +70,7 @@ seul le system prompt change ; l'historique reste partagé.
 ## 5. Découpage suggéré (build order)
 
 1. Design-system → composants React montés + thèmes `data-theme` fonctionnels.
-2. Backend proxy Anthropic + SQLite + schéma ci-dessus.
+2. Backend proxy Gemini + SQLite + schéma ci-dessus.
 3. P0 : onboarding conversationnel → génération plan → chat → log/checklist.
 4. P1 : dashboard, historique, réglages, check-ins d'ouverture.
 

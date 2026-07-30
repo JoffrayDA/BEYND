@@ -1,13 +1,13 @@
-// LLM integration — Anthropic Claude. All calls are server-side (API key never
+// LLM integration — Google Gemini. All calls are server-side (API key never
 // reaches the client). Falls back to deterministic mock replies when no key is
 // set, so the app is runnable end-to-end in dev without credentials.
 
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI, Type } from '@google/genai';
 import { getCoach } from './coaches.js';
 
-const KEY = process.env.ANTHROPIC_API_KEY;
-const CHAT_MODEL = 'claude-sonnet-5';
-const client = KEY ? new Anthropic({ apiKey: KEY }) : null;
+const KEY = process.env.GEMINI_API_KEY;
+const CHAT_MODEL = 'gemini-2.5-flash';
+const client = KEY ? new GoogleGenAI({ apiKey: KEY }) : null;
 export const HAS_KEY = Boolean(KEY);
 
 // --- 1 & 3. Chat / onboarding reply -----------------------------------------
@@ -19,36 +19,41 @@ export async function coachReply({ coachId, messages, contextNote = '' }) {
     ? `${coach.systemPrompt}\n\nContexte à jour :\n${contextNote}`
     : coach.systemPrompt;
 
-  const res = await client.messages.create({
+  const res = await client.models.generateContent({
     model: CHAT_MODEL,
-    max_tokens: 500,
-    system,
-    messages: messages.map((m) => ({
-      role: m.role === 'coach' ? 'assistant' : 'user',
-      content: m.contenu ?? m.content ?? '',
+    contents: messages.map((m) => ({
+      role: m.role === 'coach' ? 'model' : 'user',
+      parts: [{ text: m.contenu ?? m.content ?? '' }],
     })),
+    config: {
+      systemInstruction: system,
+      maxOutputTokens: 500,
+      // Thinking is on by default on 2.5 and consumes the output budget —
+      // disabled so short chat replies never come back empty.
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   });
-  return res.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+  return (res.text ?? '').trim();
 }
 
 // --- 2. Structured weekly program generation --------------------------------
 const PLAN_TOOL = {
   name: 'proposer_programme',
   description: 'Propose le programme hebdo structuré pour l’utilisateur.',
-  input_schema: {
-    type: 'object',
+  parameters: {
+    type: Type.OBJECT,
     properties: {
-      semaine: { type: 'integer', description: 'Numéro de semaine (1 pour le début).' },
-      resume: { type: 'string', description: 'Résumé court du plan de la semaine, adressé à "tu".' },
+      semaine: { type: Type.INTEGER, description: 'Numéro de semaine (1 pour le début).' },
+      resume: { type: Type.STRING, description: 'Résumé court du plan de la semaine, adressé à "tu".' },
       engagements: {
-        type: 'array',
+        type: Type.ARRAY,
         description: 'Liste des engagements concrets et cochables de la semaine.',
         items: {
-          type: 'object',
+          type: Type.OBJECT,
           properties: {
-            jour: { type: 'string', description: 'Jour ou moment (ex: "Lundi", "3x/sem").' },
-            libelle: { type: 'string', description: 'Ex: "20 pompes", "Séance cardio 30 min".' },
-            cible: { type: 'string', description: 'Cible mesurable ex: "20 reps", "30 min", "fait".' },
+            jour: { type: Type.STRING, description: 'Jour ou moment (ex: "Lundi", "3x/sem").' },
+            libelle: { type: Type.STRING, description: 'Ex: "20 pompes", "Séance cardio 30 min".' },
+            cible: { type: Type.STRING, description: 'Cible mesurable ex: "20 reps", "30 min", "fait".' },
           },
           required: ['libelle', 'cible'],
         },
@@ -62,20 +67,26 @@ export async function generatePlan({ coachId, profile, semaine = 1 }) {
   const coach = getCoach(coachId);
   if (!client) return mockPlan(semaine);
 
-  const res = await client.messages.create({
+  const res = await client.models.generateContent({
     model: CHAT_MODEL,
-    max_tokens: 900,
-    system: `${coach.systemPrompt}\n\nTu génères un programme fitness perso pour la semaine ${semaine}. Appelle l'outil proposer_programme avec des engagements concrets, mesurables, adaptés au profil.`,
-    tools: [PLAN_TOOL],
-    tool_choice: { type: 'tool', name: 'proposer_programme' },
-    messages: [{
+    contents: [{
       role: 'user',
-      content: `Profil utilisateur :\n${JSON.stringify(profile, null, 2)}\n\nGénère le programme de la semaine ${semaine}.`,
+      parts: [{
+        text: `Profil utilisateur :\n${JSON.stringify(profile, null, 2)}\n\nGénère le programme de la semaine ${semaine}.`,
+      }],
     }],
+    config: {
+      systemInstruction: `${coach.systemPrompt}\n\nTu génères un programme fitness perso pour la semaine ${semaine}. Appelle l'outil proposer_programme avec des engagements concrets, mesurables, adaptés au profil.`,
+      maxOutputTokens: 900,
+      tools: [{ functionDeclarations: [PLAN_TOOL] }],
+      toolConfig: {
+        functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['proposer_programme'] },
+      },
+    },
   });
-  const toolUse = res.content.find((b) => b.type === 'tool_use');
-  if (!toolUse) throw new Error('Plan generation returned no tool_use');
-  return validatePlan(toolUse.input, semaine);
+  const call = res.functionCalls?.[0];
+  if (!call) throw new Error('Plan generation returned no function call');
+  return validatePlan(call.args, semaine);
 }
 
 function validatePlan(plan, semaine) {
