@@ -9,8 +9,17 @@ const app = new Hono();
 app.use('/api/*', cors());
 
 const now = () => new Date().toISOString();
+const today = () => now().slice(0, 10);
 const coachList = () =>
   Object.values(COACHES).map((c) => ({ id: c.id, name: c.name, persona: c.persona }));
+
+// Opening check-in thresholds (PRD open question — see docs/PRD.md §8).
+const SEUIL_JOURS_SANS_LOG = 2;   // days without a weigh-in before the coach pings
+const SEUIL_ADHERENCE = 50;       // % of week engagements below which we ping
+const AGE_PROGRAMME_MIN = 5;      // days into the week before adherence is judged
+
+const daysBetween = (from, to = now()) =>
+  Math.floor((Date.parse(to.slice(0, 10)) - Date.parse(from.slice(0, 10))) / 86400000);
 
 // --- helpers ---------------------------------------------------------------
 function currentProgram(projectId) {
@@ -35,7 +44,84 @@ function metrics(projectId) {
   const prog = currentProgram(projectId);
   const faits = prog ? prog.engagements.filter((e) => e.fait).length : 0;
   const total = prog ? prog.engagements.length : 0;
-  return { actuel, tendance7, adherence: total ? Math.round((faits / total) * 100) : 0, faits, total, measurements: rows };
+  const derniere_mesure = rows.at(-1)?.date ?? null;
+  return {
+    actuel,
+    tendance7,
+    adherence: total ? Math.round((faits / total) * 100) : 0,
+    faits,
+    total,
+    derniere_mesure,
+    // null = never logged, which counts as "overdue" for the check-in rule.
+    jours_sans_log: derniere_mesure ? daysBetween(derniere_mesure) : null,
+    measurements: rows,
+  };
+}
+
+// Where the user stands in the project: week N of duree_semaines + % to target.
+function progress(project) {
+  const m = metrics(project.id);
+  const u = db.prepare(`SELECT * FROM user WHERE id = 1`).get();
+  const jours = Math.max(0, daysBetween(project.date_debut));
+  const semaine_courante = Math.min(project.duree_semaines, Math.floor(jours / 7) + 1);
+  let pct_objectif = null;
+  if (u.poids_depart != null && u.poids_cible != null && u.poids_depart !== u.poids_cible && m.actuel != null) {
+    const brut = (u.poids_depart - m.actuel) / (u.poids_depart - u.poids_cible);
+    pct_objectif = Math.max(0, Math.min(100, Math.round(brut * 100)));
+  }
+  return {
+    semaine_courante,
+    duree_semaines: project.duree_semaines,
+    jours_ecoules: jours,
+    poids_depart: u.poids_depart,
+    poids_cible: u.poids_cible,
+    pct_objectif,
+    reste_kg: m.actuel != null && u.poids_cible != null ? +(m.actuel - u.poids_cible).toFixed(1) : null,
+  };
+}
+
+// Day-by-day log: weigh-ins and ticked engagements merged on the date key.
+function history(projectId) {
+  const mes = db.prepare(
+    `SELECT date, poids FROM measurement WHERE project_id = ? ORDER BY date`
+  ).all(projectId);
+  const engs = db.prepare(
+    `SELECT e.date, e.libelle, e.cible FROM engagement e
+       JOIN program p ON p.id = e.program_id
+      WHERE p.project_id = ? AND e.fait = 1 AND e.date IS NOT NULL
+      ORDER BY e.date`
+  ).all(projectId);
+
+  const jours = new Map();
+  const day = (d) => {
+    if (!jours.has(d)) jours.set(d, { date: d, poids: null, delta: null, engagements: [] });
+    return jours.get(d);
+  };
+  mes.forEach((r, i) => {
+    const j = day(r.date);
+    j.poids = r.poids;
+    j.delta = i > 0 ? +(r.poids - mes[i - 1].poids).toFixed(1) : null;
+  });
+  for (const e of engs) day(e.date).engagements.push({ libelle: e.libelle, cible: e.cible });
+
+  return [...jours.values()].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+// --- opening check-in ------------------------------------------------------
+// Returns the reason a proactive coach message is due, or null. Throttled to
+// once per calendar day so reopening the app doesn't spam the chat.
+function checkinReason(project) {
+  if (project.statut !== 'active') return null;
+  if (project.dernier_checkin?.slice(0, 10) === today()) return null;
+
+  const m = metrics(project.id);
+  if (m.jours_sans_log === null || m.jours_sans_log >= SEUIL_JOURS_SANS_LOG) return 'no_log';
+
+  const prog = currentProgram(project.id);
+  if (prog && daysBetween(prog.genere_le) >= AGE_PROGRAMME_MIN && m.adherence < SEUIL_ADHERENCE) {
+    return 'engagements_en_retard';
+  }
+  return null;
 }
 
 function contextNote(project) {
@@ -60,6 +146,8 @@ app.get('/api/state', (c) => {
     messages: project ? messages(project.id) : [],
     program: project ? currentProgram(project.id) : null,
     metrics: project ? metrics(project.id) : null,
+    progress: project && project.statut === 'active' ? progress(project) : null,
+    checkin: project ? { raison: checkinReason(project) } : null,
   });
 });
 
@@ -180,6 +268,74 @@ app.post('/api/engagement/:id/toggle', (c) => {
     .run(fait, fait ? now().slice(0, 10) : null, id);
   const project = getActiveProject();
   return c.json({ program: currentProgram(project.id), metrics: metrics(project.id) });
+});
+
+// --- P1: history -----------------------------------------------------------
+app.get('/api/history', (c) => {
+  const project = getActiveProject();
+  if (!project) return c.json({ error: 'no project' }, 400);
+  return c.json({ jours: history(project.id) });
+});
+
+// --- P1: settings (profile + project) --------------------------------------
+app.post('/api/profile', async (c) => {
+  const project = getActiveProject();
+  if (!project) return c.json({ error: 'no project' }, 400);
+  const b = await c.req.json();
+
+  const u = db.prepare(`SELECT * FROM user WHERE id = 1`).get();
+  const pick = (key, cast = Number) => {
+    if (b[key] === undefined || b[key] === '' || b[key] === null) return u[key];
+    const v = cast(b[key]);
+    return Number.isNaN(v) ? u[key] : v;
+  };
+  db.prepare(
+    `UPDATE user SET poids_cible=?, taille=?, niveau=?, dispo_par_semaine=?, contraintes=? WHERE id=1`
+  ).run(
+    pick('poids_cible'),
+    pick('taille'),
+    b.niveau ?? u.niveau,
+    pick('dispo_par_semaine'),
+    b.contraintes ?? u.contraintes,
+  );
+
+  const duree = Number(b.duree_semaines);
+  db.prepare(`UPDATE project SET objectif=?, duree_semaines=? WHERE id=?`).run(
+    b.objectif ?? project.objectif,
+    Number.isFinite(duree) && duree > 0 ? duree : project.duree_semaines,
+    project.id,
+  );
+
+  const updated = getActiveProject();
+  return c.json({
+    user: db.prepare(`SELECT * FROM user WHERE id = 1`).get(),
+    project: updated,
+    progress: progress(updated),
+  });
+});
+
+// --- P1: opening check-in --------------------------------------------------
+app.post('/api/checkin', async (c) => {
+  const project = getActiveProject();
+  if (!project) return c.json({ error: 'no project' }, 400);
+  const raison = checkinReason(project);
+  if (!raison) return c.json({ fired: false, messages: messages(project.id) });
+
+  const m = metrics(project.id);
+  const consigne = raison === 'no_log'
+    ? `Ça fait ${m.jours_sans_log ?? 'plusieurs'} jour(s) qu'il n'a pas loggé son poids. Relance-le sur ce point précis, en une ou deux phrases.`
+    : `Il n'a coché que ${m.faits}/${m.total} engagements de la semaine. Relance-le là-dessus, en une ou deux phrases.`;
+
+  const line = await coachReply({
+    coachId: project.coach_id,
+    messages: [...messages(project.id), { role: 'user', contenu: `[système] Ouvre la conversation toi-même. ${consigne} N'invente pas de chiffres.` }],
+    contextNote: contextNote(project),
+  });
+  db.prepare(`INSERT INTO message (project_id, role, coach_id, contenu, timestamp) VALUES (?, 'coach', ?, ?, ?)`)
+    .run(project.id, project.coach_id, line, now());
+  db.prepare(`UPDATE project SET dernier_checkin=? WHERE id=?`).run(now(), project.id);
+
+  return c.json({ fired: true, raison, messages: messages(project.id) });
 });
 
 const port = Number(process.env.PORT) || 8787;

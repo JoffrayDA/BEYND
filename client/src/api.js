@@ -17,4 +17,7 @@ export const api = {
   switchCoach: (coachId) => req('/project/coach', { method: 'POST', body: { coachId } }),
   addMeasurement: (poids) => req('/measurement', { method: 'POST', body: { poids } }),
   toggleEngagement: (id) => req(`/engagement/${id}/toggle`, { method: 'POST' }),
+  history: () => req('/history'),
+  saveProfile: (patch) => req('/profile', { method: 'POST', body: patch }),
+  checkin: () => req('/checkin', { method: 'POST' }),
 };

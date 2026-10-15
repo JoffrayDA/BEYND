@@ -75,6 +75,17 @@ db.exec(`
 // Ensure the singleton user row exists.
 db.exec(`INSERT OR IGNORE INTO user (id) VALUES (1);`);
 
+// --- migrations ------------------------------------------------------------
+// SQLite has no ADD COLUMN IF NOT EXISTS; check the table shape first.
+function addColumn(table, column, decl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+}
+
+// Opening check-ins: throttled to one per day, so we track the last one fired.
+addColumn('project', 'dernier_checkin', 'TEXT');
+
 export function getActiveProject() {
   return db.prepare(`SELECT * FROM project ORDER BY id DESC LIMIT 1`).get();
 }

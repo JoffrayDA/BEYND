@@ -21,6 +21,10 @@ export function Chat({ state, refresh, onTheme }) {
 
   useEffect(() => { bottom.current?.scrollIntoView({ block: 'nearest' }); }, [messages.length]);
 
+  // Keep in sync with the app-level state (opening check-in, coach switch,
+  // remount after a tab change) instead of drifting from a stale snapshot.
+  useEffect(() => { setMessages(state.messages); }, [state.messages]);
+
   async function send() {
     if (!input.trim() || busy) return;
     const text = input.trim();
@@ -30,6 +34,7 @@ export function Chat({ state, refresh, onTheme }) {
     const r = await api.chat(text);
     setMessages(r.messages);
     setBusy(false);
+    refresh(); // metrics band + app state pick up the new turn
   }
 
   async function switchCoach(id) {

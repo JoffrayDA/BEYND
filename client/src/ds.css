@@ -28,11 +28,12 @@
 }
 .tabbar button {
   flex: 1;
-  padding: 12px;
+  min-width: 0;
+  padding: 12px 4px;
   background: transparent;
   border: none;
   font-family: var(--font-sans);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-text-muted);
   cursor: pointer;
