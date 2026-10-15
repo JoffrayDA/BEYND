@@ -30,18 +30,26 @@ export function Settings({ state, refresh, onTheme }) {
 
   async function save() {
     setBusy(true);
-    await api.saveProfile(form);
-    await refresh();
-    setBusy(false);
-    setSaved(true);
+    try {
+      await api.saveProfile(form);
+      await refresh();
+      setSaved(true);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function switchCoach(id) {
     setBusy(true);
     onTheme(id);
-    await api.switchCoach(id);
-    await refresh();
-    setBusy(false);
+    try {
+      await api.switchCoach(id);
+    } catch {
+      onTheme(p.coach_id);
+    } finally {
+      await refresh().catch(() => {});
+      setBusy(false);
+    }
   }
 
   return (

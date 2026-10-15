@@ -11,16 +11,21 @@ export function Log({ state, refresh }) {
     const val = Number(weight);
     if (!val || busy) return;
     setBusy(true);
-    await api.addMeasurement(val);
-    setWeight('');
-    await refresh();
-    setBusy(false);
+    try {
+      await api.addMeasurement(val);
+      setWeight('');
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function toggle(id) {
-    const r = await api.toggleEngagement(id);
-    setProgram(r.program);
-    refresh();
+    try {
+      const r = await api.toggleEngagement(id);
+      setProgram(r.program);
+      refresh();
+    } catch { /* checkbox stays in its previous state */ }
   }
 
   const engagements = program?.engagements || [];

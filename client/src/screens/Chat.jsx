@@ -18,6 +18,7 @@ export function Chat({ state, refresh, onTheme }) {
   const [showSwitch, setShowSwitch] = useState(false);
   const bottom = useRef(null);
   const m = state.metrics || {};
+  const coachName = state.coaches.find((c) => c.id === state.project.coach_id)?.name ?? '';
 
   useEffect(() => { bottom.current?.scrollIntoView({ block: 'nearest' }); }, [messages.length]);
 
@@ -31,19 +32,29 @@ export function Chat({ state, refresh, onTheme }) {
     setInput('');
     setMessages((prev) => [...prev, { id: `tmp-${Date.now()}`, role: 'user', contenu: text }]);
     setBusy(true);
-    const r = await api.chat(text);
-    setMessages(r.messages);
-    setBusy(false);
+    try {
+      const r = await api.chat(text);
+      setMessages(r.messages);
+    } catch {
+      setInput(text); // give the text back so the user can retry
+    } finally {
+      setBusy(false);
+    }
     refresh(); // metrics band + app state pick up the new turn
   }
 
   async function switchCoach(id) {
     setBusy(true);
     onTheme(id);
-    const r = await api.switchCoach(id);
-    setMessages(r.messages);
-    setShowSwitch(false);
-    setBusy(false);
+    try {
+      const r = await api.switchCoach(id);
+      setMessages(r.messages);
+      setShowSwitch(false);
+    } catch {
+      onTheme(state.project.coach_id);
+    } finally {
+      setBusy(false);
+    }
     refresh();
   }
 
@@ -51,7 +62,7 @@ export function Chat({ state, refresh, onTheme }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <Avatar name={state.project.coach_id} size="sm" online />
+          <Avatar name={coachName} size="sm" online />
           <strong style={{ flex: 1 }}>{state.project.objectif || 'Mon projet'}</strong>
           <Button size="sm" variant="ghost" onClick={() => setShowSwitch((v) => !v)}>Coach ⌄</Button>
         </div>

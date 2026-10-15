@@ -9,16 +9,23 @@ export function Onboarding({ state, onTheme, onDone }) {
   const [coachId, setCoachId] = useState(null);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const coachName = state.coaches.find((c) => c.id === coachId)?.name ?? '';
   const [profile, setProfile] = useState({ objectif: 'Perdre 5 kg', poids_depart: '', poids_cible: '', niveau: 'débutant', dispo_par_semaine: 3 });
 
   async function pickCoach(id) {
     setCoachId(id);
     onTheme(id);
     setBusy(true);
-    const r = await api.onboardingStart(id);
-    setMessages(r.messages);
-    setBusy(false);
-    setStep('chat');
+    try {
+      const r = await api.onboardingStart(id);
+      setMessages(r.messages);
+      setStep('chat');
+    } catch {
+      setCoachId(null);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function send() {
@@ -26,20 +33,31 @@ export function Onboarding({ state, onTheme, onDone }) {
     const text = input.trim();
     setInput('');
     setBusy(true);
-    const r = await api.onboardingMessage(text);
-    setMessages(r.messages);
-    setBusy(false);
+    try {
+      const r = await api.onboardingMessage(text);
+      setMessages(r.messages);
+    } catch {
+      setInput(text);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function complete() {
     setBusy(true);
-    await api.onboardingComplete({
-      ...profile,
-      poids_depart: Number(profile.poids_depart) || null,
-      poids_cible: Number(profile.poids_cible) || null,
-      dispo_par_semaine: Number(profile.dispo_par_semaine) || null,
-    });
-    await onDone();
+    setError(null);
+    try {
+      await api.onboardingComplete({
+        ...profile,
+        poids_depart: Number(profile.poids_depart) || null,
+        poids_cible: Number(profile.poids_cible) || null,
+        dispo_par_semaine: Number(profile.dispo_par_semaine) || null,
+      });
+      await onDone();
+    } catch {
+      setError('La génération du plan a échoué. Réessaie.');
+      setBusy(false);
+    }
   }
 
   if (step === 'pick') {
@@ -66,7 +84,7 @@ export function Onboarding({ state, onTheme, onDone }) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Avatar name={coachId} size="sm" online />
+          <Avatar name={coachName} size="sm" online />
           <strong>Onboarding</strong>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
@@ -103,6 +121,7 @@ export function Onboarding({ state, onTheme, onDone }) {
       {field('Poids cible (kg)', 'poids_cible', 'number')}
       {field('Niveau', 'niveau')}
       {field('Séances / semaine', 'dispo_par_semaine', 'number')}
+      {error && <p style={{ color: 'var(--color-danger)', margin: 0, fontSize: 'var(--text-sm)' }}>{error}</p>}
       <Button onClick={complete} disabled={busy}>{busy ? 'Génération…' : 'Générer mon programme'}</Button>
     </div>
   );

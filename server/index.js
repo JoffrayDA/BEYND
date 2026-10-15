@@ -192,6 +192,16 @@ app.post('/api/onboarding/complete', async (c) => {
   db.prepare(
     `UPDATE user SET poids_depart=?, poids_cible=?, taille=?, niveau=?, dispo_par_semaine=?, contraintes=? WHERE id=1`
   ).run(p.poids_depart ?? null, p.poids_cible ?? null, p.taille ?? null, p.niveau ?? null, p.dispo_par_semaine ?? null, p.contraintes ?? null);
+  // Generate the plan before activating anything: if the LLM fails, the project
+  // stays in onboarding and the user can retry instead of landing plan-less.
+  let plan;
+  try {
+    plan = await generatePlan({ coachId: project.coach_id, profile: p, semaine: 1 });
+  } catch (err) {
+    console.error('generatePlan failed:', err);
+    return c.json({ error: 'plan generation failed' }, 502);
+  }
+
   db.prepare(`UPDATE project SET objectif=?, duree_semaines=?, statut='active' WHERE id=?`)
     .run(p.objectif ?? 'Perte de poids', p.duree_semaines ?? 12, project.id);
 
@@ -201,7 +211,6 @@ app.post('/api/onboarding/complete', async (c) => {
       .run(project.id, now().slice(0, 10), p.poids_depart);
   }
 
-  const plan = await generatePlan({ coachId: project.coach_id, profile: p, semaine: 1 });
   const progInfo = db.prepare(
     `INSERT INTO program (project_id, semaine, plan_json, genere_le) VALUES (?, ?, ?, ?)`
   ).run(project.id, plan.semaine, JSON.stringify(plan), now());
@@ -251,9 +260,12 @@ app.post('/api/project/coach', async (c) => {
 // --- log: measurement ------------------------------------------------------
 app.post('/api/measurement', (c) => {
   const project = getActiveProject();
+  if (!project) return c.json({ error: 'no project' }, 400);
   return c.req.json().then((b) => {
+    const poids = Number(b.poids);
+    if (!Number.isFinite(poids) || poids <= 0) return c.json({ error: 'invalid poids' }, 400);
     db.prepare(`INSERT INTO measurement (project_id, date, poids) VALUES (?, ?, ?)`)
-      .run(project.id, b.date ?? now().slice(0, 10), b.poids);
+      .run(project.id, b.date ?? now().slice(0, 10), poids);
     return c.json({ metrics: metrics(project.id) });
   });
 });
