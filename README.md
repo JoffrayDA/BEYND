@@ -1,9 +1,10 @@
 # BEYND
 
-Plateforme de coaching conversationnel. MVP fitness (perte de poids), chat-first,
-3 coachs (Max / Sam / Nova) avec thème visuel par coach.
+> En cours de pivot (branche `feat/elo-mvp`) vers « Elo de vie » : objectifs de vie,
+> Elo par catégorie, coach IA qui construit le plan. Le code ci-dessous est encore
+> la version fitness ; docs fitness dans [`docs/archive/`](docs/archive/).
 
-- Produit : [`docs/PRD.md`](docs/PRD.md)
+- Produit : [`docs/BRIEF.md`](docs/BRIEF.md)
 - Architecture : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Design system : [`design-system/`](design-system/) (tokens CSS + composants React)
 

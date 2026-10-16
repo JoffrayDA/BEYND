@@ -1,81 +1,165 @@
-# BEYND — Architecture (MVP)
+# Elo de vie — Architecture (MVP)
 
-> Cadre technique du MVP fitness mono-user. 1 page. Voir `PRD.md` pour le scope produit.
+> Cadre technique du MVP solo. Produit : voir [`BRIEF.md`](BRIEF.md) (fait office de PRD).
+> Décisions validées le 2026-10-16. L'ancienne version fitness est dans [`archive/`](archive/).
 
-## 1. Stack & justification
+## 1. Stack (reprise de BEYND)
 
-| Couche | Choix | Pourquoi |
+| Couche | Choix | Statut |
 |---|---|---|
-| Frontend | **React + Vite**, PWA (`vite-plugin-pwa`) | Design-system déjà en composants React (JSX) + tokens CSS. PWA = installable, mobile-first, ouvre la porte au push post-MVP sans changer de stack. |
-| Styling | **CSS tokens du design-system** (`data-theme`) | Thèmes par coach déjà définis (`tokens/colors.css`). Rien à réinventer. |
-| Backend | **Node léger** (Hono ou Express), serverless-friendly | La clé API LLM **ne doit jamais être côté client** → un proxy serveur est obligatoire, même en mono-user. Sert aussi la persistance. |
-| DB | **SQLite** (`better-sqlite3`) | Mono-user, zéro infra. Schéma pensé pour migrer vers Postgres quand multi-user arrive. |
-| LLM | **Gemini API (Google AI Studio)** — `gemini-2.5-flash` par défaut | Free tier généreux, bon coût/latence pour du chat volumineux + function calling pour la génération structurée. `gemini-2.5-pro` en option pour la génération de plan si besoin de plus de finesse. |
+| Frontend | React 18 + Vite, PWA (`vite-plugin-pwa`), mobile d'abord (390 px) | Repris |
+| Styling | Tokens CSS du `design-system/`, **un seul thème sombre `data-theme="elo"`** | Nouveau thème, plus de thème par coach |
+| Backend | Hono sur Node ≥ 22 | Repris |
+| DB | SQLite via `node:sqlite` (zéro dépendance native), mono-user implicite (id = 1) | Infra reprise, schéma remplacé |
+| LLM | Gemini `gemini-2.5-flash`, structured output par function calling, mode mock sans clé | Repris, nouveau schéma de sortie |
 
-**Mobile-first** : layout pensé téléphone d'abord, chat = surface fixe (composer en
-bas, header coach en haut, historique scroll au milieu), écrans secondaires via bottom
-tab bar.
+La clé `GEMINI_API_KEY` reste dans `server/.env` (ignoré par git). Elle n'est jamais envoyée au client.
 
-## 2. Résolution du conflit design
-
-`design-decisions.md` (frosted-glass, gradients, blur) **vs** `design-system/readme.md`
-(flat, opaque, zéro blur/gradient). → **Le design-system exporté fait foi** : surfaces
-plates opaques, bordures 1px, glow réservé au token `--shadow-glow-primary` (état actif
-uniquement). `design-decisions.md` est un doc de phase antérieure.
-
-## 3. Structure de données
+## 2. Modèle de données
 
 ```
-User (singleton MVP)      : id, poids_depart, poids_cible, taille, niveau,
-                            dispo_par_semaine, contraintes
-Project                   : id, user_id, objectif, coach_id_actif, date_debut,
-                            duree_semaines, statut
-Coach (constantes code,   : id, nom, persona, theme, system_prompt
-       pas en DB)           (max | sam | nova)
-Program                   : id, project_id, semaine, plan_json (engagements générés LLM),
-                            genere_le
-Engagement                : id, program_id, jour, libelle, cible (reps/qty/bool),
-                            fait (bool), date
-Measurement               : id, project_id, date, poids
-Message                   : id, project_id, role (user|coach), coach_id (auteur si coach),
-                            contenu, data_card_json (optionnel), timestamp
+user              id, name, created_at
+categories        id (slug), name, ordre                        -- préremplie
+goals             id, user_id, category_id, title, prompt (texte saisi),
+                  difficulty (400–2200), coach_intro, is_main, status
+                  ('active' | 'done' | 'archived'), created_at, completed_at
+steps             id, goal_id, title, ordre, status ('todo' | 'done'), completed_at
+tasks             id, step_id, label, ordre, xp, done_on (date ISO | NULL)
+progress_events   id, user_id, category_id, goal_id, step_id, task_id,
+                  kind ('task' | 'step_bonus' | 'boss'),
+                  delta_xp, delta_elo (REAL), elo_after (REAL),
+                  reverts_id (NULL | id de l'événement annulé), created_at
 ```
 
-Notes :
-- **`coach_id` sur chaque message** = requis parce que le coach est switchable :
-  l'historique doit savoir qui a parlé pour rendre le bon avatar/thème/ton.
-- **Coach = constantes code**, pas une table : 3 personas figés, versionnés avec l'app.
-- Schéma volontairement compatible Postgres (types simples, FK explicites) pour la
-  migration multi-user post-MVP.
+Écarts par rapport à l'esquisse du brief (§7) :
+- **Pas de table `user_category_elo` ni de colonnes `xp`, `niveau` ou `série` sur `user`.** Tout est dérivé de `progress_events` : c'est la seule source de vérité. Ça rend l'annulation d'une coche exacte et donne les courbes gratuitement. On ajoutera un cache plus tard si les performances l'exigent.
+  - Elo d'une catégorie = `1000 + Σ delta_elo`.
+  - Courbe = suite des `elo_after`.
+  - XP = `Σ delta_xp`.
+- Catégories initiales : Tech, Langues, Sport, Carrière, Créatif, Autre. La liste est fermée et le validateur LLM la vérifie.
+- Le premier objectif créé devient automatiquement `is_main`.
 
-## 4. Points d'intégration LLM
+## 3. Règles de jeu (moteur pur `server/engine.js`, testé)
 
-Tous les appels passent par le backend (clé API server-side). 4 usages :
+### Notations
+- `diff` : difficulté de l'objectif.
+- `elo` : Elo courant de la catégorie de l'objectif, **au moment de l'action**.
+- `gain(diff, elo) = max(2, round((diff − elo) / 10 + 20))` (formule du brief).
 
-1. **Onboarding (chat libre)** — conversation d'interview. System prompt = persona du
-   coach choisi. Objectif : collecter objectif/poids/niveau/dispo.
-2. **Génération du programme** — **tool use / structured output** : le modèle retourne
-   un `plan_json` conforme à un schéma strict (semaines → jours → engagements
-   {libellé, cible}). Validé côté serveur avant persistance ; re-prompt si invalide.
-3. **Réponses coach en chat** — system prompt = règles de voix du coach actif (voir
-   `readme.md` Content Fundamentals : "tu", emoji seulement Max, ton par persona).
-   Contexte injecté : métriques récentes + engagements cochés/ratés + historique récent.
-4. **Check-ins d'ouverture (P1)** — à l'ouverture, si séance ratée / pas de log depuis
-   X jours, appel LLM contextuel qui ouvre le chat avec un message in-persona.
+### Elo
+| Événement | Δ Elo |
+|---|---|
+| Tâche cochée | `gain / n`, où `n` = nombre de tâches de l'étape, arrondi à 0,1 |
+| Dernière tâche d'une étape cochée → étape terminée | bonus `+ gain` (en plus du Δ de la tâche) |
+| Dernière étape terminée → objectif terminé (boss) | `+ gain × 2` |
 
-**Persona = system prompt paramétré par `coach_id`.** Un seul pipeline d'appel, le
-system prompt (ton, thème, règles emoji) est injecté selon le coach actif. Au switch,
-seul le system prompt change ; l'historique reste partagé.
+Le gain est recalculé à chaque action avec l'Elo courant : plus l'Elo monte, moins la même difficulté rapporte. Une même coche peut donc produire jusqu'à trois événements, enregistrés dans l'ordre : `task`, `step_bonus`, `boss`.
 
-## 5. Découpage suggéré (build order)
+Exemple : objectif pentester (1850), Elo Tech 1000, étape de 5 tâches.
+- `gain = round(850 / 10 + 20) = 105`.
+- Chaque tâche donne ≈ +21. Il y a un léger tassement, car l'Elo monte à chaque coche.
+- La fin de l'étape ajoute un bonus ≈ +95, recalculé avec l'Elo du moment.
 
-1. Design-system → composants React montés + thèmes `data-theme` fonctionnels.
-2. Backend proxy Gemini + SQLite + schéma ci-dessus.
-3. P0 : onboarding conversationnel → génération plan → chat → log/checklist.
-4. P1 : dashboard, historique, réglages, check-ins d'ouverture.
+### Décocher une tâche
+- On enregistre un événement inverse (`reverts_id`) avec **exactement l'opposé** du Δ d'origine. On ne recalcule rien.
+- Si l'étape était terminée, elle repasse en `todo` et son `step_bonus` est annulé aussi. Même chose pour le `boss` si l'objectif était terminé.
+- Recocher ensuite recalcule le Δ avec l'Elo courant.
 
-## 6. Post-MVP (ne pas builder maintenant)
+### XP, niveau, série
+- XP par tâche, selon le palier de difficulté de l'objectif :
 
-Auth + multi-user (→ Postgres, isolation par user), push notifications réelles
-(background jobs + push tokens), domaines non-fitness (généraliser `Project`),
-avatars 3D finaux.
+  | Palier | Difficulté | XP |
+  |---|---|---|
+  | Facile | < 800 | 10 |
+  | Moyen | < 1400 | 20 |
+  | Dur | < 1800 | 35 |
+  | Élite | ≥ 1800 | 50 |
+
+  La valeur est fixée sur la tâche à sa création.
+- Niveau = `floor(XP / 1000) + 1`.
+- Série = nombre de jours consécutifs, jusqu'à aujourd'hui ou hier, ayant au moins une tâche avec `done_on` à cette date.
+
+### Elo de vie
+Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 1000 s'il n'y en a aucune.
+
+### Hors MVP
+- Rendements décroissants (ils supposent des tâches récurrentes : v1.1).
+- Baisse d'Elo par inactivité (règle à valider).
+- Recalibrage communautaire (v2).
+
+## 4. Coach IA
+
+- **Un seul coach.** Les personas Max, Sam et Nova sont retirées, ainsi que le changement de thème. Son seul rôle : analyser un objectif et présenter le plan. Pas de chat dans le MVP.
+- Appelé **uniquement** à la création ou à la modification d'un objectif.
+- Sortie structurée (fonction `proposer_plan`), validée côté serveur :
+
+```json
+{
+  "category": "tech",
+  "difficulty": 1850,
+  "intro": "2–3 phrases qui présentent le plan, adressées à « tu ».",
+  "steps": [
+    { "title": "Pre Security", "tasks": ["Room How the Web Works", "Room Linux Fundamentals 1"] }
+  ]
+}
+```
+
+- Règles du validateur :
+  - `category` ∈ liste fermée, sinon `autre`.
+  - `difficulty` ramenée dans [400, 2200].
+  - 1 à 8 étapes, 1 à 10 tâches par étape, libellés non vides.
+  - Si la sortie est invalide : une relance, puis une erreur 502.
+- Le prompt demande des tâches concrètes et cochables, qui renvoient aux ressources externes (TryHackMe, appli de langue…). L'app ne fournit pas de contenu.
+- **Mock sans clé** : renvoie le plan pentester du brief (§9) pour que tout le parcours soit jouable.
+- **Rollback** (repris de BEYND) : l'analyse ne crée rien en base. L'insertion se fait seulement à la confirmation, dans une transaction.
+
+## 5. API
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| GET | `/api/state` | Accueil : profil (XP, niveau, série), Elo de vie + courbe, Elo par catégorie, Quête du jour, objectif principal |
+| POST | `/api/goals/analyze` | `{ prompt }` → proposition du coach (rien n'est persisté) |
+| POST | `/api/goals` | Proposition éventuellement modifiée par l'utilisateur → création en transaction |
+| GET | `/api/goals?category=` | Liste des objectifs : palier, difficulté, gain potentiel, avancement |
+| GET | `/api/goals/:id` | Détail : étapes et tâches |
+| PATCH | `/api/goals/:id` | Titre, `is_main`, `status` (archiver) |
+| POST | `/api/tasks/:id/toggle` | Coche ou décoche → événements, puis renvoie l'état mis à jour et les événements produits (pour les célébrations) |
+| GET | `/api/progress` | Courbes d'Elo par catégorie, historique jour par jour, séries |
+
+**Quête du jour** : pour chaque objectif actif, les 3 prochaines tâches non faites de la première étape en `todo`, dans l'ordre. L'objectif principal passe en premier. On y ajoute les tâches cochées aujourd'hui, pour pouvoir les décocher.
+
+## 6. Front
+
+- Onglets du bas : **Accueil · Objectifs · Progrès · Profil**.
+- Thème `elo` : palette du brief (§8), polices Archivo et Silkscreen. Silkscreen est réservée aux labels pixel (niveau, XP, badges).
+- Repris de BEYND :
+  - `api.js` ;
+  - structure d'`App.jsx` + barre d'onglets ;
+  - `Card`, `Button`, `Badge`, `XPPill`, `Input` ;
+  - `StatTile` et `Meter` ;
+  - `WeightChart`, généralisé en `LineChart` multi-séries.
+- Nouveau :
+  - avatar pixel en SVG `crispEdges` ;
+  - liste de la Quête du jour (reprise de `Log.jsx`) ;
+  - parcours de création (saisie → analyse → aperçu modifiable → confirmation) ;
+  - célébration à la fin d'une étape et du boss.
+- Retiré : Chat, Onboarding, Settings fitness, mesures de poids, `coaches.js` multi-personas.
+
+## 7. Ordre de build
+
+| Étape | Contenu | Fin d'étape |
+|---|---|---|
+| É0 | Docs (ce fichier) | Validé |
+| É1 | `engine.js` + tests `node:test` | `npm test` passe |
+| É2 | Schéma DB | La base se crée vide et propre |
+| É3 | Coach Gemini (analyse + mock) | JSON valide, avec ou sans clé |
+| É4 | API | Parcours complet testé avec curl |
+| É5 | Fondations front (thème, onglets, `LineChart`) | Coquille navigable |
+| É6 | Création d'objectif | Cas pentester créé de bout en bout |
+| É7 | Accueil | Cocher une tâche met tout à jour |
+| É8 | Objectifs + Progrès | MVP complet |
+| É9 | Finitions, nettoyage du code fitness, README, manifeste PWA | Prêt pour la démo |
+
+## 8. Post-MVP (ne pas builder maintenant)
+
+Tâches récurrentes et rendements décroissants, baisse d'Elo par inactivité, raids du dimanche, collection de monstres, recalibrage communautaire, auth et multi-user (→ Postgres).
