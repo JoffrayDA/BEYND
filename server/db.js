@@ -1,91 +1,125 @@
 // SQLite via Node's built-in node:sqlite (Node >=22) — no native build step.
 // Mono-user MVP: a single implicit user (id=1). Schema kept Postgres-friendly
-// (simple types, explicit FKs) for the post-MVP multi-user migration.
+// (simple types, explicit FKs). See docs/ARCHITECTURE.md §2.
+//
+// progress_events is the single source of truth for Elo, XP, level and streak:
+// rows are only ever appended (a cancellation is a new row with reverts_id).
 
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { DIFFICULTY_MIN, DIFFICULTY_MAX } from './engine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const db = new DatabaseSync(join(__dirname, 'beynd.db'));
 
-db.exec(`
-  PRAGMA journal_mode = WAL;
+export const CATEGORIES = [
+  { id: 'tech', name: 'Tech' },
+  { id: 'langues', name: 'Langues' },
+  { id: 'sport', name: 'Sport' },
+  { id: 'carriere', name: 'Carrière' },
+  { id: 'creatif', name: 'Créatif' },
+  { id: 'autre', name: 'Autre' },
+];
 
+const SCHEMA = `
   CREATE TABLE IF NOT EXISTS user (
     id INTEGER PRIMARY KEY,
-    poids_depart REAL,
-    poids_cible REAL,
-    taille REAL,
-    niveau TEXT,
-    dispo_par_semaine INTEGER,
-    contraintes TEXT
+    name TEXT NOT NULL DEFAULT 'Joueur',
+    created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS project (
+  CREATE TABLE IF NOT EXISTS categories (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    ordre INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS goals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    objectif TEXT,
-    coach_id TEXT NOT NULL DEFAULT 'cool-jeune',
-    date_debut TEXT NOT NULL,
-    duree_semaines INTEGER NOT NULL DEFAULT 12,
-    statut TEXT NOT NULL DEFAULT 'onboarding'
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES user(id),
+    category_id TEXT NOT NULL REFERENCES categories(id),
+    title TEXT NOT NULL,
+    prompt TEXT,                   -- what the user typed, kept for re-analysis
+    difficulty INTEGER NOT NULL CHECK (difficulty BETWEEN ${DIFFICULTY_MIN} AND ${DIFFICULTY_MAX}),
+    coach_intro TEXT,
+    is_main INTEGER NOT NULL DEFAULT 0 CHECK (is_main IN (0, 1)),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'done', 'archived')),
+    created_at TEXT NOT NULL,
+    completed_at TEXT
   );
 
-  CREATE TABLE IF NOT EXISTS program (
+  CREATE TABLE IF NOT EXISTS steps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id INTEGER NOT NULL,
-    semaine INTEGER NOT NULL,
-    plan_json TEXT NOT NULL,
-    genere_le TEXT NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES project(id)
+    goal_id INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    ordre INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'done')),
+    completed_at TEXT
   );
 
-  CREATE TABLE IF NOT EXISTS engagement (
+  CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    program_id INTEGER NOT NULL,
-    jour TEXT,
-    libelle TEXT NOT NULL,
-    cible TEXT,
-    fait INTEGER NOT NULL DEFAULT 0,
-    date TEXT,
-    FOREIGN KEY (program_id) REFERENCES program(id)
+    step_id INTEGER NOT NULL REFERENCES steps(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    ordre INTEGER NOT NULL,
+    xp INTEGER NOT NULL CHECK (xp >= 0),   -- fixed at creation from the goal's tier
+    done_on TEXT                           -- ISO date, NULL while not done
   );
 
-  CREATE TABLE IF NOT EXISTS measurement (
+  -- No ON DELETE CASCADE here on purpose: the ledger is append-only, so a
+  -- goal that already produced events cannot be hard-deleted (archive it).
+  CREATE TABLE IF NOT EXISTS progress_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id INTEGER NOT NULL,
-    date TEXT NOT NULL,
-    poids REAL NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES project(id)
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES user(id),
+    category_id TEXT NOT NULL REFERENCES categories(id),
+    goal_id INTEGER NOT NULL REFERENCES goals(id),
+    step_id INTEGER REFERENCES steps(id),
+    task_id INTEGER REFERENCES tasks(id),
+    kind TEXT NOT NULL CHECK (kind IN ('task', 'step_bonus', 'boss')),
+    delta_xp INTEGER NOT NULL DEFAULT 0,
+    delta_elo REAL NOT NULL,
+    elo_after REAL NOT NULL,
+    reverts_id INTEGER UNIQUE REFERENCES progress_events(id),
+    created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS message (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id INTEGER NOT NULL,
-    role TEXT NOT NULL,            -- 'user' | 'coach'
-    coach_id TEXT,                 -- author when role='coach' (switchable coach)
-    contenu TEXT NOT NULL,
-    data_card_json TEXT,
-    timestamp TEXT NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES project(id)
-  );
-`);
+  CREATE INDEX IF NOT EXISTS idx_goals_category ON goals(category_id);
+  CREATE INDEX IF NOT EXISTS idx_steps_goal ON steps(goal_id, ordre);
+  CREATE INDEX IF NOT EXISTS idx_tasks_step ON tasks(step_id, ordre);
+  CREATE INDEX IF NOT EXISTS idx_tasks_done_on ON tasks(done_on);
+  CREATE INDEX IF NOT EXISTS idx_events_category ON progress_events(category_id, id);
+  CREATE INDEX IF NOT EXISTS idx_events_task ON progress_events(task_id);
+`;
 
-// Ensure the singleton user row exists.
-db.exec(`INSERT OR IGNORE INTO user (id) VALUES (1);`);
+// Opens (and initialises, idempotently) a database. Tests pass ':memory:'.
+export function openDb(path = join(__dirname, 'elo.db')) {
+  const db = new DatabaseSync(path);
+  db.exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;`);
+  db.exec(SCHEMA);
 
-// --- migrations ------------------------------------------------------------
+  const insCat = db.prepare(`INSERT OR IGNORE INTO categories (id, name, ordre) VALUES (?, ?, ?)`);
+  CATEGORIES.forEach((c, i) => insCat.run(c.id, c.name, i));
+  db.prepare(`INSERT OR IGNORE INTO user (id, created_at) VALUES (1, ?)`).run(new Date().toISOString());
+  return db;
+}
+
+// node:sqlite has no transaction helper. Runs fn inside BEGIN/COMMIT and
+// rolls back on any throw, so a multi-row write is all-or-nothing.
+export function transaction(db, fn) {
+  db.exec('BEGIN');
+  try {
+    const out = fn();
+    db.exec('COMMIT');
+    return out;
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
 // SQLite has no ADD COLUMN IF NOT EXISTS; check the table shape first.
-function addColumn(table, column, decl) {
+export function addColumn(db, table, column, decl) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all();
   if (cols.some((c) => c.name === column)) return;
   db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
-}
-
-// Opening check-ins: throttled to one per day, so we track the last one fired.
-addColumn('project', 'dernier_checkin', 'TEXT');
-
-export function getActiveProject() {
-  return db.prepare(`SELECT * FROM project ORDER BY id DESC LIMIT 1`).get();
 }
