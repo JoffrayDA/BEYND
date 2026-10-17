@@ -28,3 +28,26 @@ test('parseDayStartHour: valid hours, else falls back to 4', () => {
   assert.equal(parseDayStartHour('23'), 23);
   for (const bad of ['24', '-1', '4.5', 'abc']) assert.equal(parseDayStartHour(bad), 4, bad);
 });
+
+test('grantDemoXp: lands 5 XP short of the next level, Elo untouched; next tick levels up', async () => {
+  const { openDb } = await import('./db.js');
+  const { createGoal, grantDemoXp, homeState, toggleTask } = await import('./game.js');
+  const db = openDb(':memory:');
+  const now = at(17, 9);
+  assert.throws(() => grantDemoXp(db, undefined, { now }), /create a goal first/);
+
+  const goal = createGoal(db, { title: 'Ranger', category: 'autre', difficulty: 450, intro: '', steps: [{ title: 'Tri', tasks: ['a', 'b'] }] }, { now });
+  const r = grantDemoXp(db, undefined, { now });
+  assert.equal(r.granted, 995);
+  assert.deepEqual([r.user.level, r.user.xpInLevel], [1, 995]);
+  assert.equal(homeState(db, now).categories.find((c) => c.id === 'autre').elo, 1000);
+
+  toggleTask(db, goal.steps[0].tasks[0].id, { now });
+  assert.equal(homeState(db, now).user.level, 2);
+  // Unticking cancels the tick only, never the demo XP.
+  toggleTask(db, goal.steps[0].tasks[0].id, { now });
+  assert.equal(homeState(db, now).user.xp, 995);
+
+  assert.equal(grantDemoXp(db, 1500, { now }).user.xp, 2495);
+  assert.throws(() => grantDemoXp(db, -3, { now }), /positive integer/);
+});

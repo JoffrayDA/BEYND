@@ -5,7 +5,7 @@
 import { transaction, CATEGORIES } from './db.js';
 import {
   START_ELO, round1, gain, tier, taskXp, level, checkEvents, revertEvents,
-  lifeElo, streak, bestStreak,
+  lifeElo, streak, bestStreak, XP_PER_LEVEL,
 } from './engine.js';
 
 export class NotFound extends Error {}
@@ -378,4 +378,28 @@ export function toggleTask(db, taskId, { now }) {
     }
     return { done: task.done_on == null, events };
   });
+}
+
+// --- demo ------------------------------------------------------------------
+// Dev-only XP grant (npm run demo:xp) to preview the level-up celebration.
+// Written as an Elo-neutral 'task' row with no task_id, attached to the main
+// goal: the ledger stays the single source of truth and no untick can cancel it.
+// Without an amount, XP lands 5 short of the next level, so the next tick
+// (≥ 10 XP) levels up.
+export function grantDemoXp(db, amount, { now }) {
+  const goal = db.prepare(`
+    SELECT * FROM goals WHERE status != 'archived' ORDER BY is_main DESC, created_at, id LIMIT 1`).get();
+  if (!goal) throw new Conflict('create a goal first');
+  const { xp } = db.prepare(`SELECT COALESCE(SUM(delta_xp), 0) AS xp FROM progress_events`).get();
+  let delta = amount;
+  if (delta === undefined) {
+    delta = level(xp).level * XP_PER_LEVEL - 5 - xp;
+    if (delta <= 0) delta += XP_PER_LEVEL;
+  }
+  if (!Number.isInteger(delta) || delta <= 0) throw new Conflict('amount must be a positive integer');
+  db.prepare(`
+    INSERT INTO progress_events (category_id, goal_id, kind, delta_xp, delta_elo, elo_after, created_at)
+    VALUES (?, ?, 'task', ?, 0, ?, ?)
+  `).run(goal.category_id, goal.id, delta, categoryElo(db, goal.category_id), now.toISOString());
+  return { granted: delta, user: userProfile(db, localDay(now)) };
 }

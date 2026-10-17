@@ -138,6 +138,7 @@ Précisions d'implémentation :
 - « Aujourd'hui » = journée de jeu, en heure locale du serveur. Elle commence à `DAY_START_HOUR` (4 h par défaut) : une coche à 1 h compte pour la veille. Ça vaut pour `done_on`, la série, l'historique et les courbes.
 - Archiver l'objectif principal fait passer le rôle d'objectif principal à l'objectif restant le plus ancien.
 - `ELO_DB_PATH` permet d'utiliser une base jetable. `npm run mock` démarre le serveur sans charger `.env`, donc sans Gemini.
+- **Démo** : `npm run demo:xp` (dans `server/`) ajoute l'XP qui manque pour arriver à 5 XP du niveau suivant ; la prochaine coche déclenche donc la célébration de niveau. `npm run demo:xp -- 1500` donne un montant exact. C'est une ligne `task` du journal sans `task_id` et à Δ Elo nul : aucune décoche ne l'annule. Il faut au moins un objectif.
 
 ## 6. Front
 
