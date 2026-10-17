@@ -11,6 +11,18 @@ export const XP_PER_LEVEL = 1000;
 export const MAX_STEPS = 8;
 export const MAX_TASKS = 10;
 
+// Routine limits and defaults (docs/ARCHITECTURE.md § Routines).
+export const MAX_HABITS = 3;
+export const MAX_MILESTONES = 8;
+export const PER_WEEK_MIN = 1;
+export const PER_WEEK_MAX = 7;
+export const PER_WEEK_DEFAULT = 3;
+export const BOSS_WEEKS_MIN = 4;
+export const BOSS_WEEKS_MAX = 12;
+export const BOSS_WEEKS_DEFAULT = 8;
+export const MILESTONE_XP_FACTOR = 5;
+export const LEVEL_UP_STEP = 150;
+
 // Ordered by upper bound; the last tier has no ceiling.
 export const TIERS = [
   { id: 'facile', label: 'Facile', below: 800, xp: 10 },
@@ -65,7 +77,7 @@ export function checkEvents({ difficulty, elo, taskCount, xp, stepCompleted = fa
   return events;
 }
 
-const REVERT_ORDER = { boss: 0, step_bonus: 1, task: 2 };
+const REVERT_ORDER = { boss: 0, week_bonus: 1, step_bonus: 1, milestone: 2, session: 2, task: 2 };
 
 // Unticking stores the exact opposite of what was granted — never a
 // recomputation — so check + uncheck always lands back on the same Elo.
@@ -132,3 +144,59 @@ export function bestStreak(doneDates) {
   });
   return best;
 }
+
+// --- routines ----------------------------------------------------------------
+
+// Monday (ISO date) of the week holding `day` ('YYYY-MM-DD').
+export function weekStart(day) {
+  const d = new Date(`${day.slice(0, 10)}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+export const addDays = (iso, n) => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+// Held weeks in a row: back from last week, plus the current one if already
+// held. A current week not held yet does not break the run.
+export function weekStreak(heldWeeks, currentWeek) {
+  const held = new Set(heldWeeks);
+  let w = held.has(currentWeek) ? currentWeek : addDays(currentWeek, -7);
+  let count = 0;
+  while (held.has(w)) { count += 1; w = addDays(w, -7); }
+  return count;
+}
+
+// Events for one routine session, in storage order: session, then the
+// week bonus when this session holds the week, then the boss when that
+// completes the run of weeks. `k` = sessions of this habit already done this
+// week, `W` = sessions planned per week across the routine's habits.
+export function sessionEvents({ difficulty, elo, W, k, perWeek, xp, weekCompleted = false, bossReached = false }) {
+  if (!(W >= 1)) throw new Error('W must be >= 1');
+  if (bossReached && !weekCompleted) throw new Error('boss needs the week that completes it');
+  const extra = k >= perWeek;
+  const events = [];
+  let current = elo;
+  const push = (kind, deltaXp, deltaElo) => {
+    current = round1(current + deltaElo);
+    events.push({ kind, delta_xp: deltaXp, delta_elo: deltaElo, elo_after: current });
+  };
+  const base = gain(difficulty, current) / W;
+  push('session', extra ? Math.floor(xp / 2) : xp, round1(extra ? base / 2 : base));
+  if (weekCompleted) push('week_bonus', 0, gain(difficulty, current));
+  if (bossReached) push('boss', 0, gain(difficulty, current) * 2);
+  return events;
+}
+
+export function milestoneEvent({ difficulty, elo, xp }) {
+  const d = gain(difficulty, elo);
+  return { kind: 'milestone', delta_xp: xp * MILESTONE_XP_FACTOR, delta_elo: d, elo_after: round1(elo + d) };
+}
+
+// Once the category Elo passes the routine's difficulty, its gain heads to
+// the floor: time to raise the bar.
+export const canLevelUp = (difficulty, elo) => elo > difficulty && difficulty < DIFFICULTY_MAX;
+export const levelUpDifficulty = (difficulty) => Math.min(DIFFICULTY_MAX, difficulty + LEVEL_UP_STEP);

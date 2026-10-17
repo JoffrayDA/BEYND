@@ -125,3 +125,56 @@ test('bestStreak: longest run ever, duplicates and order ignored', () => {
   assert.equal(bestStreak(['2026-10-12', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-02', '2026-10-11']), 3);
   assert.equal(bestStreak(['2026-09-30', '2026-10-01']), 2);
 });
+
+// --- routines ----------------------------------------------------------------
+import {
+  weekStart, weekStreak, sessionEvents, milestoneEvent, canLevelUp, levelUpDifficulty,
+} from './engine.js';
+
+test('weekStart: Monday of the week, across months', () => {
+  assert.equal(weekStart('2026-10-17'), '2026-10-12');   // Saturday
+  assert.equal(weekStart('2026-10-12'), '2026-10-12');   // Monday
+  assert.equal(weekStart('2026-10-18'), '2026-10-12');   // Sunday
+  assert.equal(weekStart('2026-11-01'), '2026-10-26');
+});
+
+test('weekStreak: current week counts only once held', () => {
+  const held = ['2026-09-28', '2026-10-05'];
+  assert.equal(weekStreak(held, '2026-10-12'), 2);                  // not held yet: no break
+  assert.equal(weekStreak([...held, '2026-10-12'], '2026-10-12'), 3);
+  assert.equal(weekStreak(['2026-09-28'], '2026-10-12'), 0);       // last week missed
+  assert.equal(weekStreak([], '2026-10-12'), 0);
+});
+
+test('sessionEvents: gain / W, half past the weekly target, week bonus and boss', () => {
+  // Callisthenics 1600, 3 sessions/week, Elo 1000 → gain 80.
+  const [s] = sessionEvents({ difficulty: 1600, elo: 1000, W: 3, k: 0, perWeek: 3, xp: 35 });
+  assert.deepEqual(s, { kind: 'session', delta_xp: 35, delta_elo: 26.7, elo_after: 1026.7 });
+
+  const [x] = sessionEvents({ difficulty: 1600, elo: 1000, W: 3, k: 3, perWeek: 3, xp: 35 });
+  assert.deepEqual([x.delta_xp, x.delta_elo], [17, 13.3]);
+
+  const evs = sessionEvents({ difficulty: 1600, elo: 1000, W: 3, k: 2, perWeek: 3, xp: 35, weekCompleted: true, bossReached: true });
+  assert.deepEqual(evs.map((e) => e.kind), ['session', 'week_bonus', 'boss']);
+  assert.equal(evs[1].delta_elo, 77);               // recomputed at 1026.7
+  assert.equal(evs[2].delta_elo, Math.max(2, Math.round((1600 - 1103.7) / 10 + 20)) * 2);
+  assert.throws(() => sessionEvents({ difficulty: 900, elo: 1000, W: 0, k: 0, perWeek: 1, xp: 10 }));
+});
+
+test('sessionEvents: easy routine pays the floor once Elo is far above it', () => {
+  const [s] = sessionEvents({ difficulty: 900, elo: 1200, W: 5, k: 0, perWeek: 5, xp: 20 });
+  assert.equal(s.delta_elo, 0.4);                   // gain floor 2 / 5
+});
+
+test('milestoneEvent: + gain, XP ×5', () => {
+  assert.deepEqual(milestoneEvent({ difficulty: 1600, elo: 1000, xp: 35 }),
+    { kind: 'milestone', delta_xp: 175, delta_elo: 80, elo_after: 1080 });
+});
+
+test('level up: offered once Elo passes difficulty, +150 capped at 2200', () => {
+  assert.equal(canLevelUp(900, 900), false);
+  assert.equal(canLevelUp(900, 900.1), true);
+  assert.equal(canLevelUp(2200, 2300), false);
+  assert.equal(levelUpDifficulty(900), 1050);
+  assert.equal(levelUpDifficulty(2100), 2200);
+});

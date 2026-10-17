@@ -5,7 +5,10 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { SYSTEM_PROMPT } from './coach.js';
 import { CATEGORIES } from './db.js';
-import { clampDifficulty, MAX_STEPS, MAX_TASKS } from './engine.js';
+import {
+  clampDifficulty, MAX_STEPS, MAX_TASKS, MAX_HABITS, MAX_MILESTONES,
+  PER_WEEK_MIN, PER_WEEK_MAX, PER_WEEK_DEFAULT, BOSS_WEEKS_MIN, BOSS_WEEKS_MAX, BOSS_WEEKS_DEFAULT,
+} from './engine.js';
 
 const KEY = process.env.GEMINI_API_KEY;
 // gemini-2.5-flash is closed to new keys (404 since 2026); the API points to 3.8.
@@ -25,13 +28,28 @@ const PLAN_TOOL = {
   parameters: {
     type: Type.OBJECT,
     properties: {
+      kind: { type: Type.STRING, enum: ['project', 'routine'], description: 'project = un parcours qui se termine ; routine = tenir un rythme.' },
       title: { type: Type.STRING, description: 'Titre court de l’objectif.' },
       category: { type: Type.STRING, enum: CATEGORIES.map((c) => c.id), description: 'Catégorie de l’objectif.' },
       difficulty: { type: Type.INTEGER, description: 'Rating de difficulté, 400 à 2200.' },
       intro: { type: Type.STRING, description: 'Présentation du plan en 2-3 phrases, adressée à "tu".' },
+      habits: {
+        type: Type.ARRAY,
+        description: 'Routine seulement : 1 à 3 habitudes récurrentes.',
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            label: { type: Type.STRING, description: 'Action d’une séance, avec sa durée (ex. "Lire 20 min").' },
+            per_week: { type: Type.INTEGER, description: 'Séances par semaine, 1 à 7.' },
+          },
+          required: ['label', 'per_week'],
+        },
+      },
+      milestones: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Routine seulement : 0 à 8 jalons de niveau, sans ordre imposé.' },
+      boss_weeks: { type: Type.INTEGER, description: 'Routine seulement : semaines tenues d’affilée pour vaincre le boss, 4 à 12.' },
       steps: {
         type: Type.ARRAY,
-        description: 'Étapes dans l’ordre chronologique.',
+        description: 'Projet seulement : étapes dans l’ordre chronologique.',
         items: {
           type: Type.OBJECT,
           properties: {
@@ -42,7 +60,7 @@ const PLAN_TOOL = {
         },
       },
     },
-    required: ['title', 'category', 'difficulty', 'intro', 'steps'],
+    required: ['kind', 'title', 'category', 'difficulty', 'intro'],
   },
 };
 
@@ -93,12 +111,38 @@ function normalizeCategory(raw) {
   return hit ? hit.id : 'autre';
 }
 
+const clampInt = (v, min, max, fallback) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+
 // Lenient on shape (trims, drops empties, truncates overflow), strict on
-// substance: a plan with no usable step or no numeric difficulty is rejected.
+// substance: a plan with no usable step (project) or habit (routine), or no
+// numeric difficulty, is rejected.
 export function validatePlan(plan, fallbackTitle = '') {
   if (!plan || typeof plan !== 'object') throw new CoachError('plan is not an object');
   const difficulty = Number(plan.difficulty);
   if (!Number.isFinite(difficulty)) throw new CoachError('difficulty missing');
+  const base = {
+    title: clean(plan.title, MAX_TITLE) || clean(fallbackTitle, MAX_TITLE),
+    category: normalizeCategory(plan.category),
+    difficulty: clampDifficulty(difficulty),
+    intro: clean(plan.intro, 600),
+  };
+
+  if (plan.kind === 'routine') {
+    const habits = (Array.isArray(plan.habits) ? plan.habits : [])
+      .map((h) => ({ label: clean(h?.label, MAX_LABEL), per_week: clampInt(h?.per_week, PER_WEEK_MIN, PER_WEEK_MAX, PER_WEEK_DEFAULT) }))
+      .filter((h) => h.label)
+      .slice(0, MAX_HABITS);
+    if (habits.length === 0) throw new CoachError('no usable habit');
+    const milestones = (Array.isArray(plan.milestones) ? plan.milestones : [])
+      .map((m) => clean(m, MAX_TITLE)).filter(Boolean).slice(0, MAX_MILESTONES);
+    return {
+      kind: 'routine', ...base, habits, milestones,
+      boss_weeks: clampInt(plan.boss_weeks, BOSS_WEEKS_MIN, BOSS_WEEKS_MAX, BOSS_WEEKS_DEFAULT),
+    };
+  }
 
   const steps = (Array.isArray(plan.steps) ? plan.steps : [])
     .map((s) => ({
@@ -112,18 +156,29 @@ export function validatePlan(plan, fallbackTitle = '') {
     .slice(0, MAX_STEPS);
   if (steps.length === 0) throw new CoachError('no usable step');
 
-  return {
-    title: clean(plan.title, MAX_TITLE) || clean(fallbackTitle, MAX_TITLE),
-    category: normalizeCategory(plan.category),
-    difficulty: clampDifficulty(difficulty),
-    intro: clean(plan.intro, 600),
-    steps,
-  };
+  return { kind: 'project', ...base, steps };
 }
 
-// --- Mock fallback (no API key): the brief's first use case (§9) ------------
+// --- Mock fallback (no API key) ---------------------------------------------
+// A rhythm-like goal gets the callisthenics routine, anything else the
+// brief's first use case (§9), so both kinds are playable without a key.
+const ROUTINE_HINT = /routine|habitude|lire|lecture|callisth|sport|courir|muscu|méditer|chaque (jour|semaine)/i;
+
 function mockPlan(prompt) {
+  if (ROUTINE_HINT.test(prompt)) {
+    return Promise.resolve(validatePlan({
+      kind: 'routine',
+      title: prompt,
+      category: 'sport',
+      difficulty: 1600,
+      intro: '[mock · pas de clé API] Routine type : 3 séances par semaine, des jalons de niveau, et le boss tombe après 8 semaines tenues d’affilée.',
+      habits: [{ label: 'Séance callisthénie (45 min)', per_week: 3 }, { label: 'Mobilité épaules et poignets (10 min)', per_week: 2 }],
+      milestones: ['10 tractions strictes', 'Pompe en équilibre contre le mur', 'Premier muscle-up'],
+      boss_weeks: 8,
+    }, prompt));
+  }
   return Promise.resolve(validatePlan({
+    kind: 'project',
     title: prompt,
     category: 'tech',
     difficulty: 1850,

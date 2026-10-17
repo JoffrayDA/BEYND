@@ -27,8 +27,42 @@ function fakeClient(...responses) {
 }
 const asCall = (args) => ({ functionCalls: [{ name: 'proposer_plan', args }] });
 
-test('validatePlan keeps a well-formed plan as is', () => {
-  assert.deepEqual(validatePlan(valid), valid);
+test('validatePlan keeps a well-formed plan as is (kind defaults to project)', () => {
+  assert.deepEqual(validatePlan(valid), { kind: 'project', ...valid });
+  assert.equal(validatePlan({ ...valid, kind: 'nope' }).kind, 'project');
+});
+
+const routine = {
+  kind: 'routine', title: 'Reprendre la lecture', category: 'creatif', difficulty: 900, intro: 'Cinq fois par semaine.',
+  habits: [{ label: 'Lire 20 min', per_week: 5 }], milestones: ['Finir un livre'], boss_weeks: 8,
+};
+
+test('validatePlan: a routine keeps habits, milestones and boss_weeks, drops steps', () => {
+  assert.deepEqual(validatePlan({ ...routine, steps: [{ title: 'x', tasks: ['y'] }] }), routine);
+});
+
+test('validatePlan: routine fields clamped and trimmed', () => {
+  const p = validatePlan({
+    ...routine,
+    habits: [{ label: '  Lire  ', per_week: 9 }, { label: 'Écrire', per_week: 0 }, { label: '', per_week: 3 },
+      { label: 'Noter', per_week: 'x' }, { label: 'Quatrième', per_week: 2 }],
+    milestones: ['a', '', ...Array.from({ length: 10 }, (_, i) => `m${i}`)],
+    boss_weeks: 40,
+  });
+  assert.deepEqual(p.habits, [{ label: 'Lire', per_week: 7 }, { label: 'Écrire', per_week: 1 }, { label: 'Noter', per_week: 3 }]);
+  assert.equal(p.milestones.length, 8);
+  assert.equal(p.boss_weeks, 12);
+  assert.equal(validatePlan({ ...routine, boss_weeks: undefined }).boss_weeks, 8);
+});
+
+test('validatePlan: a routine without a usable habit is rejected', () => {
+  assert.throws(() => validatePlan({ ...routine, habits: [{ label: ' ' }] }), CoachError);
+});
+
+test('analyzeGoal: mock mode gives a routine for rhythm-like goals', async () => {
+  const p = await analyzeGoal({ prompt: 'Reprendre une routine lecture', client: null });
+  assert.equal(p.kind, 'routine');
+  assert.ok(p.habits.length > 0);
 });
 
 test('validatePlan: category accepted by id or name, accents optional, else autre', () => {

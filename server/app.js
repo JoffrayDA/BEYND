@@ -6,7 +6,7 @@ import { cors } from 'hono/cors';
 import { analyzeGoal, validatePlan, CoachError, HAS_KEY } from './llm.js';
 import {
   NotFound, Conflict, homeState, progressState, listGoals, goalDetail,
-  createGoal, updateGoal, toggleTask,
+  createGoal, updateGoal, toggleTask, toggleHabit, toggleMilestone, levelUpRoutine,
 } from './game.js';
 import { CATEGORIES } from './db.js';
 import { gain, tier, taskXp } from './engine.js';
@@ -74,10 +74,10 @@ export function createApp({ db, analyze = analyzeGoal, clock = () => new Date(),
   app.get('/api/goals', (c) => {
     const category = c.req.query('category') || undefined;
     if (category && !CATEGORIES.some((cat) => cat.id === category)) return c.json({ error: 'unknown category' }, 400);
-    return c.json({ goals: listGoals(db, { category, archived: c.req.query('archived') === '1' }) });
+    return c.json({ goals: listGoals(db, { category, archived: c.req.query('archived') === '1', now: clock() }) });
   });
 
-  app.get('/api/goals/:id', (c) => c.json({ goal: goalDetail(db, idParam(c)) }));
+  app.get('/api/goals/:id', (c) => c.json({ goal: goalDetail(db, idParam(c), clock()) }));
 
   app.patch('/api/goals/:id', async (c) => {
     const b = await body(c);
@@ -88,10 +88,21 @@ export function createApp({ db, analyze = analyzeGoal, clock = () => new Date(),
     return c.json({ goal: updateGoal(db, idParam(c), patch, { now: clock() }) });
   });
 
-  app.post('/api/tasks/:id/toggle', (c) => {
+  // Every toggle answers the same way: the events written (for the
+  // celebrations) and the new home state.
+  const toggleRoute = (path, fn) => app.post(path, (c) => {
     const now = clock();
-    const result = toggleTask(db, idParam(c), { now });
+    const result = fn(db, idParam(c), { now });
     return c.json({ ...result, state: homeState(db, now) });
+  });
+  toggleRoute('/api/tasks/:id/toggle', toggleTask);
+  toggleRoute('/api/habits/:id/toggle', toggleHabit);
+  toggleRoute('/api/milestones/:id/toggle', toggleMilestone);
+
+  app.post('/api/goals/:id/level-up', async (c) => {
+    const now = clock();
+    const goal = levelUpRoutine(db, idParam(c), await body(c), { now });
+    return c.json({ goal, state: homeState(db, now) });
   });
 
   app.onError((err, c) => {
