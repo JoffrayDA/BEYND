@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { Button, Card } from '../ds.js';
 import { CategoryTag, TierBadge } from '../components/Badges.jsx';
 import { Meter, PixelLabel } from '../components/Stats.jsx';
-import { categoryFilters, filterGoals } from '../lib/goals.js';
+import { categoryFilters, filterGoals, routineLine } from '../lib/goals.js';
 import { Screen } from './Screen.jsx';
 import { NewGoal } from './NewGoal.jsx';
 import { GoalDetail } from './GoalDetail.jsx';
@@ -113,22 +113,24 @@ function GoalCard({ goal, highlight, onOpen }) {
         <CategoryTag id={goal.category_id} name={goal.category_name} muted />
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {goal.is_main && <PixelLabel color="var(--color-accent)">Principal</PixelLabel>}
+          {goal.routine && <PixelLabel>Routine</PixelLabel>}
           <TierBadge tier={goal.tier} difficulty={goal.difficulty} />
         </div>
       </div>
       <div style={{ fontWeight: 700, fontSize: 'var(--text-md)', margin: '6px 0 2px' }}>{goal.title}</div>
       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-        {done ? 'Boss vaincu' : archived ? 'Archivé' : `Étape ${p.steps_done + 1}/${p.steps_total} · ${goal.current_step ?? '—'}`}
+        {archived ? 'Archivé' : goal.routine ? routineLine(goal.routine)
+          : done ? 'Boss vaincu' : `Étape ${p.steps_done + 1}/${p.steps_total} · ${goal.current_step ?? '—'}`}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
         <div style={{ flex: 1 }}><Meter pct={p.pct} color={`var(--cat-${goal.category_id})`} height={6} label={`Avancement de ${goal.title}`} /></div>
         <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-          {p.tasks_done}/{p.tasks_total}
+          {goal.routine ? `${Math.min(goal.routine.weeks_streak, goal.routine.boss_weeks)}/${goal.routine.boss_weeks} sem.` : `${p.tasks_done}/${p.tasks_total}`}
         </span>
       </div>
-      {!done && !archived && (
+      {!done && !archived && !goal.routine?.boss_done && (
         <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-          <span>Étape : <strong style={{ color: 'var(--color-text)' }}>+{goal.potential_gain} Elo</strong></span>
+          <span>{goal.routine ? 'Semaine tenue' : 'Étape'} : <strong style={{ color: 'var(--color-text)' }}>+{goal.potential_gain} Elo</strong></span>
           <span>Boss : <strong style={{ color: 'var(--color-text)' }}>+{goal.potential_gain * 2} Elo</strong></span>
         </div>
       )}

@@ -6,12 +6,15 @@ import { CategoryTag, TierBadge } from '../components/Badges.jsx';
 import { Avatar, Flame } from '../components/Avatar.jsx';
 import { fmtElo, fmtGain } from '../lib/home.js';
 import { withStart } from '../lib/progress.js';
+import { routineLine } from '../lib/goals.js';
 import { useTaskToggle } from '../components/useTaskToggle.jsx';
+import { LevelUpCard } from '../components/LevelUpCard.jsx';
 
 export function Home({ state, setState, onNewGoal, onOpenGoal }) {
   const { user, life_elo: life, main_goal: main, quest } = state;
   const active = state.categories.filter((c) => c.active);
-  const { toggle, busy, error, overlay } = useTaskToggle({ user, setState });
+  const { toggle, busy, isBusy, error, overlay } = useTaskToggle({ user, setState });
+  const target = (q) => (q.type === 'habit' ? { type: 'habit', id: q.habit_id } : { type: 'task', id: q.task_id });
 
   return (
     <div className="screen">
@@ -68,6 +71,7 @@ export function Home({ state, setState, onNewGoal, onOpenGoal }) {
               <h2 id="quest-title" style={{ margin: 0, fontSize: 'var(--text-lg)' }}>Quête du jour</h2>
               <PixelLabel>{quest.filter((q) => q.done).length}/{quest.length}</PixelLabel>
             </div>
+            {state.level_ups?.map((l) => <LevelUpCard key={l.goal_id} offer={l} setState={setState} />)}
             {quest.length === 0 ? (
               <Card padding="16px">
                 <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
@@ -77,14 +81,14 @@ export function Home({ state, setState, onNewGoal, onOpenGoal }) {
             ) : (
               <ul className="quest">
                 {quest.map((q) => (
-                  <li key={q.task_id}>
-                    <button className="quest-item" aria-pressed={q.done} disabled={busy != null} onClick={() => toggle(q.task_id, { goalTitle: q.goal_title, stepTitle: q.step_title })}>
-                      <span aria-hidden className={`check${q.done ? ' on' : ''}`}>{busy === q.task_id ? '…' : q.done ? '✓' : ''}</span>
+                  <li key={q.key}>
+                    <button className="quest-item" aria-pressed={q.done} disabled={busy != null} onClick={() => toggle(target(q), { goalTitle: q.goal_title, stepTitle: q.step_title })}>
+                      <span aria-hidden className={`check${q.done ? ' on' : ''}`}>{isBusy(target(q).type, target(q).id) ? '…' : q.done ? '✓' : ''}</span>
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <span className="quest-label" style={q.done ? { textDecoration: 'line-through', color: 'var(--color-text-muted)' } : undefined}>{q.label}</span>
                         <span className="quest-sub">
                           <span aria-hidden style={{ width: 6, height: 6, borderRadius: 1, background: `var(--cat-${q.category_id})`, display: 'inline-block', marginRight: 6 }} />
-                          {q.step_title} · {q.goal_title}
+                          {q.type === 'habit' ? `Cette semaine ${q.week_count}/${q.per_week}` : q.step_title} · {q.goal_title}
                         </span>
                       </span>
                       <span style={{ textAlign: 'right', flex: 'none' }}>
@@ -127,15 +131,16 @@ export function Home({ state, setState, onNewGoal, onOpenGoal }) {
               </div>
               <div style={{ fontWeight: 800, fontSize: 'var(--text-md)', margin: '6px 0 2px' }}>{main.title}</div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                {main.status === 'done' ? 'Boss vaincu' : `Étape ${main.progress.steps_done + 1}/${main.progress.steps_total} · ${main.current_step}`}
+                {main.status === 'done' ? 'Boss vaincu' : main.routine ? routineLine(main.routine) : `Étape ${main.progress.steps_done + 1}/${main.progress.steps_total} · ${main.current_step}`}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
                 <div style={{ flex: 1 }}><Meter pct={main.progress.pct} color={`var(--cat-${main.category_id})`} height={6} label={`Avancement de ${main.title}`} /></div>
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{main.progress.pct} %</span>
               </div>
-              {main.status !== 'done' && (
+              {main.status !== 'done' && !main.routine?.boss_done && (
                 <div style={{ marginTop: 8, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                   Boss final : <strong style={{ color: 'var(--color-text)' }}>+{main.potential_gain * 2} Elo</strong> à ton niveau actuel
+                  {main.routine && ` · après ${main.routine.boss_weeks} semaines tenues`}
                 </div>
               )}
             </button>

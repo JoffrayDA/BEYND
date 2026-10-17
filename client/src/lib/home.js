@@ -28,6 +28,13 @@ export function celebrationFor({ events, before, after, goalTitle, stepTitle }) 
   if (events.some((e) => e.kind === 'step_bonus' && e.delta_elo > 0)) {
     return { kind: 'step', title: 'Étape franchie', subtitle: stepTitle, elo, xp, bonus: sum('step_bonus'), levelUp };
   }
+  // Routines: a held week, or a milestone reached.
+  if (events.some((e) => e.kind === 'week_bonus' && e.delta_elo > 0)) {
+    return { kind: 'step', title: 'Semaine tenue', subtitle: goalTitle, elo, xp, bonus: sum('week_bonus'), levelUp };
+  }
+  if (events.some((e) => e.kind === 'milestone' && e.delta_elo > 0)) {
+    return { kind: 'step', title: 'Jalon atteint', subtitle: stepTitle, elo, xp, bonus: sum('milestone'), levelUp };
+  }
   if (levelUp) return { kind: 'level', title: `Niveau ${levelUp}`, subtitle: null, elo, xp, bonus: 0, levelUp };
   // A plain tick or an untick: a short toast is enough.
   return { kind: 'toast', elo, xp };

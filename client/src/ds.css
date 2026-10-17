@@ -302,3 +302,12 @@ textarea.field-auto { field-sizing: content; resize: none; min-height: 0; }
 .history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .history-tasks { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); color: var(--color-text-muted); }
 .history-tasks li { display: flex; gap: 8px; }
+
+/* +/- buttons for a weekly frequency. */
+.icon-btn.stepper { border-color: var(--color-border); color: var(--color-text); font-size: 18px; }
+.icon-btn.stepper:hover:not(:disabled) { color: var(--color-primary); border-color: var(--color-primary); }
+
+/* Routine week: one pip per planned session. */
+.pips { display: inline-flex; gap: 3px; }
+.pips span { width: 8px; height: 8px; border-radius: 2px; background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface)); }
+.pips span[data-on="true"] { background: var(--color-primary); }

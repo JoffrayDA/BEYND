@@ -4,8 +4,9 @@ import { Button, Card } from '../ds.js';
 import { CategoryTag, TierBadge } from '../components/Badges.jsx';
 import { Meter, PixelLabel, StatTile } from '../components/Stats.jsx';
 import { useTaskToggle } from '../components/useTaskToggle.jsx';
+import { LevelUpCard } from '../components/LevelUpCard.jsx';
 import { fmtElo, fmtGain } from '../lib/home.js';
-import { currentStepIndex, taskGain } from '../lib/goals.js';
+import { currentStepIndex, routineLine, taskGain } from '../lib/goals.js';
 
 const MAX_TITLE = 80;
 
@@ -29,7 +30,7 @@ export function GoalDetail({ id, state, setState, refresh, onBack }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const { toggle, busy, error: toggleError, overlay } = useTaskToggle({ user: state.user, setState, onDone: load });
+  const { toggle, busy, isBusy, error: toggleError, overlay } = useTaskToggle({ user: state.user, setState, onDone: load });
 
   async function patch(body) {
     if (saving) return;
@@ -67,6 +68,8 @@ export function GoalDetail({ id, state, setState, refresh, onBack }) {
 
   const archived = goal.status === 'archived';
   const done = goal.status === 'done';
+  const routine = goal.routine;
+  const offer = state.level_ups?.find((l) => l.goal_id === goal.id);
   const current = currentStepIndex(goal.steps);
   const p = goal.progress;
 
@@ -100,12 +103,16 @@ export function GoalDetail({ id, state, setState, refresh, onBack }) {
           </form>
         )}
         <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-          {done ? 'Boss vaincu' : archived ? 'Archivé : ses tâches ne sont plus dans ta Quête du jour.' : `Étape ${p.steps_done + 1}/${p.steps_total} · ${goal.current_step}`}
+          {archived ? 'Archivé : ses tâches ne sont plus dans ta Quête du jour.'
+            : routine ? routineLine(routine)
+              : done ? 'Boss vaincu' : `Étape ${p.steps_done + 1}/${p.steps_total} · ${goal.current_step}`}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
           <div style={{ flex: 1 }}><Meter pct={p.pct} color={`var(--cat-${goal.category_id})`} label={`Avancement de ${goal.title}`} /></div>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-            {p.tasks_done}/{p.tasks_total} tâches
+            {routine
+              ? `${Math.min(routine.weeks_streak, routine.boss_weeks)}/${routine.boss_weeks} semaines`
+              : `${p.tasks_done}/${p.tasks_total} tâches`}
           </span>
         </div>
       </section>
@@ -114,8 +121,18 @@ export function GoalDetail({ id, state, setState, refresh, onBack }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <StatTile label={`Elo ${goal.category_name}`} value={fmtElo(goal.category_elo)} mark={`var(--cat-${goal.category_id})`} />
         <StatTile label="Difficulté" value={goal.difficulty} sub={goal.tier.label} />
-        <StatTile label="Par étape franchie" value={`+${goal.potential_gain}`} sub="Elo, à ton niveau actuel" />
-        <StatTile label="Boss final" value={`+${goal.potential_gain * 2}`} sub={done ? 'déjà vaincu' : 'Elo, à la dernière tâche'} />
+        {routine ? (
+          <>
+            <StatTile label="Par séance" value={fmtGain(routine.session_gain)} sub={`semaine tenue : +${goal.potential_gain}`} />
+            <StatTile label="Boss final" value={`+${goal.potential_gain * 2}`}
+              sub={routine.boss_done ? 'déjà vaincu' : `après ${routine.boss_weeks} semaines tenues`} />
+          </>
+        ) : (
+          <>
+            <StatTile label="Par étape franchie" value={`+${goal.potential_gain}`} sub="Elo, à ton niveau actuel" />
+            <StatTile label="Boss final" value={`+${goal.potential_gain * 2}`} sub={done ? 'déjà vaincu' : 'Elo, à la dernière tâche'} />
+          </>
+        )}
       </div>
 
       {goal.coach_intro && (
@@ -125,6 +142,11 @@ export function GoalDetail({ id, state, setState, refresh, onBack }) {
         </Card>
       )}
 
+      {offer && !archived && <LevelUpCard offer={offer} setState={setState} onDone={load} />}
+
+      {routine ? (
+        <RoutineBody goal={goal} archived={archived} busy={busy} isBusy={isBusy} toggle={toggle} />
+      ) : (
       <section aria-labelledby="steps-title" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <h2 id="steps-title" style={{ margin: 0, fontSize: 'var(--text-lg)' }}>Étapes</h2>
         {goal.steps.map((s, i) => {
@@ -156,8 +178,8 @@ export function GoalDetail({ id, state, setState, refresh, onBack }) {
                     return (
                       <li key={t.id}>
                         <button className="quest-item" aria-pressed={on} disabled={archived || busy != null}
-                          onClick={() => toggle(t.id, { goalTitle: goal.title, stepTitle: s.title })}>
-                          <span aria-hidden className={`check${on ? ' on' : ''}`}>{busy === t.id ? '…' : on ? '✓' : ''}</span>
+                          onClick={() => toggle({ type: 'task', id: t.id }, { goalTitle: goal.title, stepTitle: s.title })}>
+                          <span aria-hidden className={`check${on ? ' on' : ''}`}>{isBusy('task', t.id) ? '…' : on ? '✓' : ''}</span>
                           <span className="quest-label" style={{ flex: 1, minWidth: 0, ...(on ? { textDecoration: 'line-through', color: 'var(--color-text-muted)' } : {}) }}>
                             {t.label}
                           </span>
@@ -174,8 +196,9 @@ export function GoalDetail({ id, state, setState, refresh, onBack }) {
             </Card>
           );
         })}
-        {toggleError && <p role="alert" className="error">{toggleError}</p>}
       </section>
+      )}
+      {toggleError && <p role="alert" className="error">{toggleError}</p>}
 
       {error && <p role="alert" className="error">{error}</p>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -196,5 +219,93 @@ export function GoalDetail({ id, state, setState, refresh, onBack }) {
 
       {overlay}
     </div>
+  );
+}
+
+// Routine: this week per habit (today's session to tick), the milestones,
+// and the run of held weeks toward the boss.
+function RoutineBody({ goal, archived, busy, isBusy, toggle }) {
+  const r = goal.routine;
+  const titles = { goalTitle: goal.title, stepTitle: null };
+  return (
+    <>
+      <section aria-labelledby="habits-title" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <h2 id="habits-title" style={{ margin: 0, fontSize: 'var(--text-lg)' }}>Cette semaine</h2>
+          <PixelLabel color={r.week.held ? 'var(--color-primary)' : undefined}>
+            {r.week.held ? 'Semaine tenue' : `${r.week.done}/${r.week.target} séances`}
+          </PixelLabel>
+        </div>
+        <ul className="quest">
+          {r.habits.map((h) => {
+            const extra = !h.done_today && h.week_count >= h.per_week;
+            return (
+              <li key={h.id}>
+                <button className="quest-item" aria-pressed={h.done_today} disabled={archived || busy != null}
+                  onClick={() => toggle({ type: 'habit', id: h.id }, titles)}>
+                  <span aria-hidden className={`check${h.done_today ? ' on' : ''}`}>{isBusy('habit', h.id) ? '…' : h.done_today ? '✓' : ''}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span className="quest-label">{h.label}</span>
+                    <span className="quest-sub" style={{ gap: 8 }}>
+                      <span className="pips" aria-hidden>
+                        {Array.from({ length: h.per_week }, (_, i) => <span key={i} data-on={i < h.week_count} />)}
+                      </span>
+                      {h.week_count}/{h.per_week} cette semaine{h.done_today ? ' · faite aujourd’hui' : extra ? ' · séance en plus' : ''}
+                    </span>
+                  </span>
+                  <span style={{ textAlign: 'right', flex: 'none' }}>
+                    {!h.done_today && (
+                      <span style={{ display: 'block', fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+                        {fmtGain(extra ? Math.round(r.session_gain * 5) / 10 : r.session_gain)}
+                      </span>
+                    )}
+                    <PixelLabel color={h.done_today ? 'var(--color-text-subtle)' : 'var(--elo-gold)'}>
+                      {extra ? Math.floor(h.xp / 2) : h.xp} XP
+                    </PixelLabel>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      {goal.steps.length > 0 && (
+        <section aria-labelledby="milestones-title" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h2 id="milestones-title" style={{ margin: 0, fontSize: 'var(--text-lg)' }}>Jalons</h2>
+            <PixelLabel>{goal.progress.steps_done}/{goal.progress.steps_total}</PixelLabel>
+          </div>
+          <ul className="quest">
+            {goal.steps.map((m) => {
+              const on = m.status === 'done';
+              return (
+                <li key={m.id}>
+                  <button className="quest-item" aria-pressed={on} disabled={archived || busy != null}
+                    onClick={() => toggle({ type: 'milestone', id: m.id }, { goalTitle: goal.title, stepTitle: m.title })}>
+                    <span aria-hidden className={`check${on ? ' on' : ''}`} style={{ borderRadius: '50%' }}>{isBusy('milestone', m.id) ? '…' : on ? '✓' : ''}</span>
+                    <span className="quest-label" style={{ flex: 1, minWidth: 0, ...(on ? { color: 'var(--color-text-muted)' } : {}) }}>{m.title}</span>
+                    {!on && <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', flex: 'none' }}>+{goal.potential_gain}</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      <Card padding="12px 14px">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+          <span style={{ fontWeight: 700 }}>Boss : {r.boss_weeks} semaines tenues d’affilée</span>
+          <PixelLabel color={r.boss_done ? 'var(--elo-pink)' : undefined}>{r.boss_done ? 'Vaincu' : `${Math.min(r.weeks_streak, r.boss_weeks)}/${r.boss_weeks}`}</PixelLabel>
+        </div>
+        <div className="pips" aria-hidden style={{ marginTop: 8, flexWrap: 'wrap' }}>
+          {Array.from({ length: r.boss_weeks }, (_, i) => <span key={i} data-on={r.boss_done || i < r.weeks_streak} style={{ width: 14, height: 14 }} />)}
+        </div>
+        <p style={{ margin: '8px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+          Une semaine est tenue quand chaque habitude atteint sa fréquence. Une semaine ratée ne coûte pas d’Elo : seule la série repart de zéro.
+        </p>
+      </Card>
+    </>
   );
 }

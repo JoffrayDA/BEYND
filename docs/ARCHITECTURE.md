@@ -234,6 +234,8 @@ Précisions d'implémentation :
 - **Routines** :
   - l'aperçu de création propose un sélecteur Projet / Routine. En routine, on édite les habitudes (libellé, fréquence de 1 à 7 par semaine), les jalons et le nombre de semaines du boss ;
   - dans le détail, chaque habitude affiche sa semaine en pastilles (3/5), avec la séance du jour à cocher. Viennent ensuite les jalons à cocher, puis le boss (« 2/8 semaines tenues d'affilée ») ;
+  - la carte « Monter d'un cran » (`LevelUpCard`) apparaît en tête de la Quête du jour et dans le détail de la routine ;
+  - les coches de tâches, séances et jalons passent toutes par `useTaskToggle` ; une semaine tenue et un jalon atteint ouvrent une célébration ;
   - la carte de la liste affiche « Cette semaine 3/5 · 2 semaines d'affilée » au lieu de l'étape en cours.
 - **Progrès** :
   - séries (actuelle, meilleure, jours joués) et grille d'activité des 5 dernières semaines, lundi en premier ;
@@ -254,7 +256,7 @@ Précisions d'implémentation :
 | É6 | Création d'objectif | Cas pentester créé de bout en bout |
 | É7 | Accueil | Cocher une tâche met tout à jour |
 | É8 | Objectifs + Progrès | MVP complet ✔ |
-| É9 | Routines : schéma + migration, moteur, coach, API, puis front (création, quête, détail) | Lecture et callisthénie jouables de bout en bout |
+| É9 | Routines : schéma + migration, moteur, coach, API, puis front (création, quête, détail) | Lecture et callisthénie jouables de bout en bout ✔ |
 | É10 | Finitions, nettoyage du code fitness, README, manifeste PWA | Prêt pour la démo |
 
 ## 8. Post-MVP (ne pas builder maintenant)

@@ -6,7 +6,13 @@ import { PixelLabel } from '../components/Stats.jsx';
 import {
   fromAnalysis, planReducer, toRequest, draftErrors, preview,
   MAX_STEPS, MAX_TASKS, MAX_TITLE, MAX_LABEL, DIFFICULTY_MIN, DIFFICULTY_MAX,
+  MAX_HABITS, MAX_MILESTONES, PER_WEEK_MIN, PER_WEEK_MAX, BOSS_WEEKS_MIN, BOSS_WEEKS_MAX,
 } from '../lib/plan.js';
+
+const KINDS = [
+  ['project', 'Projet', 'Des étapes dans l’ordre, jusqu’au boss.'],
+  ['routine', 'Routine', 'Tenir un rythme chaque semaine, avec des jalons.'],
+];
 
 const MAX_PROMPT = 500;
 const EXAMPLES = [
@@ -109,7 +115,6 @@ export function NewGoal({ categories, onCancel, onCreated }) {
 function Preview({ draft, dispatch, categories, header, saving, error, onCreate, onRestart }) {
   const p = useMemo(() => preview(draft, categories), [draft, categories]);
   const errors = draftErrors(draft);
-  const taskCount = draft.steps.reduce((n, s) => n + s.tasks.filter((t) => t.label.trim()).length, 0);
 
   return (
     <div className="screen">
@@ -127,6 +132,19 @@ function Preview({ draft, dispatch, categories, header, saving, error, onCreate,
         <input id="goal-title" className="field" maxLength={MAX_TITLE} value={draft.title}
           onChange={(e) => dispatch({ type: 'title', value: e.target.value })} />
       </div>
+
+      <fieldset className="form-row" style={{ border: 0, padding: 0, margin: 0 }}>
+        <legend>Type</legend>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {KINDS.map(([id, label, hint]) => (
+            <button key={id} className="chip" aria-pressed={draft.kind === id} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}
+              onClick={() => dispatch({ type: 'kind', value: id })}>
+              <span style={{ fontWeight: 700, color: 'var(--color-text)' }}>{label}</span>
+              <span style={{ fontSize: 'var(--text-xs)' }}>{hint}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset className="form-row" style={{ border: 0, padding: 0, margin: 0 }}>
         <legend>Catégorie</legend>
@@ -159,54 +177,9 @@ function Preview({ draft, dispatch, categories, header, saving, error, onCreate,
         </div>
       </div>
 
-      <Card padding="12px 14px">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
-          <Gain label="par étape" value={`+${p.stepGain}`} />
-          <Gain label="boss final" value={`+${p.bossGain}`} />
-          <Gain label="par tâche" value={`${p.xpPerTask} XP`} />
-        </div>
-        <p style={{ margin: '8px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', textAlign: 'center' }}>
-          Elo à ton niveau actuel ({Math.round(p.categoryElo)}). Chaque tâche cochée rapporte sa part de l’étape.
-        </p>
-      </Card>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h2 style={{ margin: 0, fontSize: 'var(--text-md)' }}>Plan</h2>
-        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-          {draft.steps.length} étape{draft.steps.length > 1 ? 's' : ''} · {taskCount} tâche{taskCount > 1 ? 's' : ''}
-        </span>
-      </div>
-
-      {draft.steps.map((s, i) => (
-        <Card key={s.key} padding="12px">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <PixelLabel style={{ flex: 'none' }}>{i + 1}</PixelLabel>
-            <textarea className="field field-strong field-auto" rows={1} aria-label={`Titre de l’étape ${i + 1}`} maxLength={MAX_TITLE}
-              value={s.title} placeholder="Titre de l’étape"
-              onChange={(e) => dispatch({ type: 'stepTitle', step: s.key, value: e.target.value.replace(/\n/g, ' ') })} />
-            <button className="icon-btn" aria-label={`Supprimer l’étape ${i + 1}`} disabled={draft.steps.length <= 1}
-              onClick={() => dispatch({ type: 'removeStep', step: s.key })}>×</button>
-          </div>
-          <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {s.tasks.map((t, j) => (
-              <li key={t.key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span aria-hidden className="task-box" />
-                <textarea className="field field-auto" rows={1} aria-label={`Tâche ${j + 1} de l’étape ${i + 1}`} maxLength={MAX_LABEL}
-                  value={t.label} placeholder="Action concrète"
-                  onChange={(e) => dispatch({ type: 'taskLabel', step: s.key, task: t.key, value: e.target.value.replace(/\n/g, ' ') })} />
-                <button className="icon-btn" aria-label={`Supprimer la tâche ${j + 1}`} disabled={s.tasks.length <= 1}
-                  onClick={() => dispatch({ type: 'removeTask', step: s.key, task: t.key })}>×</button>
-              </li>
-            ))}
-          </ul>
-          {s.tasks.length < MAX_TASKS && (
-            <button className="link" style={{ marginTop: 8 }} onClick={() => dispatch({ type: 'addTask', step: s.key })}>+ Ajouter une tâche</button>
-          )}
-        </Card>
-      ))}
-      {draft.steps.length < MAX_STEPS && (
-        <div><Button variant="secondary" size="sm" onClick={() => dispatch({ type: 'addStep' })}>+ Ajouter une étape</Button></div>
-      )}
+      {draft.kind === 'routine'
+        ? <RoutineEditor draft={draft} dispatch={dispatch} p={p} />
+        : <ProjectEditor draft={draft} dispatch={dispatch} p={p} />}
 
       {errors.length > 0 && (
         <ul role="status" className="error" style={{ margin: 0, paddingLeft: 18 }}>
@@ -222,6 +195,147 @@ function Preview({ draft, dispatch, categories, header, saving, error, onCreate,
     </div>
   );
 }
+
+function ProjectEditor({ draft, dispatch, p }) {
+  const taskCount = draft.steps.reduce((n, s) => n + s.tasks.filter((t) => t.label.trim()).length, 0);
+  return (
+    <>
+        <Card padding="12px 14px">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
+            <Gain label="par étape" value={`+${p.stepGain}`} />
+            <Gain label="boss final" value={`+${p.bossGain}`} />
+            <Gain label="par tâche" value={`${p.xpPerTask} XP`} />
+          </div>
+          <p style={{ margin: '8px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', textAlign: 'center' }}>
+            Elo à ton niveau actuel ({Math.round(p.categoryElo)}). Chaque tâche cochée rapporte sa part de l’étape.
+          </p>
+        </Card>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <h2 style={{ margin: 0, fontSize: 'var(--text-md)' }}>Plan</h2>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            {draft.steps.length} étape{draft.steps.length > 1 ? 's' : ''} · {taskCount} tâche{taskCount > 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {draft.steps.map((s, i) => (
+          <Card key={s.key} padding="12px">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <PixelLabel style={{ flex: 'none' }}>{i + 1}</PixelLabel>
+              <textarea className="field field-strong field-auto" rows={1} aria-label={`Titre de l’étape ${i + 1}`} maxLength={MAX_TITLE}
+                value={s.title} placeholder="Titre de l’étape"
+                onChange={(e) => dispatch({ type: 'stepTitle', step: s.key, value: e.target.value.replace(/\n/g, ' ') })} />
+              <button className="icon-btn" aria-label={`Supprimer l’étape ${i + 1}`} disabled={draft.steps.length <= 1}
+                onClick={() => dispatch({ type: 'removeStep', step: s.key })}>×</button>
+            </div>
+            <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {s.tasks.map((t, j) => (
+                <li key={t.key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span aria-hidden className="task-box" />
+                  <textarea className="field field-auto" rows={1} aria-label={`Tâche ${j + 1} de l’étape ${i + 1}`} maxLength={MAX_LABEL}
+                    value={t.label} placeholder="Action concrète"
+                    onChange={(e) => dispatch({ type: 'taskLabel', step: s.key, task: t.key, value: e.target.value.replace(/\n/g, ' ') })} />
+                  <button className="icon-btn" aria-label={`Supprimer la tâche ${j + 1}`} disabled={s.tasks.length <= 1}
+                    onClick={() => dispatch({ type: 'removeTask', step: s.key, task: t.key })}>×</button>
+                </li>
+              ))}
+            </ul>
+            {s.tasks.length < MAX_TASKS && (
+              <button className="link" style={{ marginTop: 8 }} onClick={() => dispatch({ type: 'addTask', step: s.key })}>+ Ajouter une tâche</button>
+            )}
+          </Card>
+        ))}
+        {draft.steps.length < MAX_STEPS && (
+          <div><Button variant="secondary" size="sm" onClick={() => dispatch({ type: 'addStep' })}>+ Ajouter une étape</Button></div>
+        )}
+    </>
+  );
+}
+
+function RoutineEditor({ draft, dispatch, p }) {
+  return (
+    <>
+      <Card padding="12px 14px">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
+          <Gain label="par séance" value={`+${fmtGain1(p.sessionGain)}`} />
+          <Gain label="semaine tenue" value={`+${p.stepGain}`} />
+          <Gain label="par séance" value={`${p.xpPerTask} XP`} />
+        </div>
+        <p style={{ margin: '8px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', textAlign: 'center' }}>
+          Elo à ton niveau actuel ({Math.round(p.categoryElo)}). Chaque jalon : +{p.stepGain} et {p.xpPerMilestone} XP.
+          Boss : +{p.bossGain} après {draft.bossWeeks} semaines tenues d’affilée.
+        </p>
+      </Card>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <h2 style={{ margin: 0, fontSize: 'var(--text-md)' }}>Habitudes</h2>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+          {p.sessionsPerWeek} séance{p.sessionsPerWeek > 1 ? 's' : ''} par semaine
+        </span>
+      </div>
+      {draft.habits.map((h, i) => (
+        <Card key={h.key} padding="12px">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <textarea className="field field-strong field-auto" rows={1} aria-label={`Habitude ${i + 1}`} maxLength={MAX_LABEL}
+              value={h.label} placeholder="Ex. Lire 20 min"
+              onChange={(e) => dispatch({ type: 'habitLabel', habit: h.key, value: e.target.value.replace(/\n/g, ' ') })} />
+            <button className="icon-btn" aria-label={`Supprimer l’habitude ${i + 1}`} disabled={draft.habits.length <= 1}
+              onClick={() => dispatch({ type: 'removeHabit', habit: h.key })}>×</button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <button className="icon-btn stepper" aria-label="Une séance de moins" disabled={h.per_week <= PER_WEEK_MIN}
+              onClick={() => dispatch({ type: 'habitPerWeek', habit: h.key, value: h.per_week - 1 })}>−</button>
+            <span style={{ fontWeight: 700, minWidth: 18, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{h.per_week}</span>
+            <button className="icon-btn stepper" aria-label="Une séance de plus" disabled={h.per_week >= PER_WEEK_MAX}
+              onClick={() => dispatch({ type: 'habitPerWeek', habit: h.key, value: h.per_week + 1 })}>+</button>
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+              {h.per_week === 7 ? 'fois par semaine (chaque jour)' : 'fois par semaine'}
+            </span>
+          </div>
+        </Card>
+      ))}
+      {draft.habits.length < MAX_HABITS && (
+        <div><Button variant="secondary" size="sm" onClick={() => dispatch({ type: 'addHabit' })}>+ Ajouter une habitude</Button></div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <h2 style={{ margin: 0, fontSize: 'var(--text-md)' }}>Jalons</h2>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>sans ordre, cochés quand tu les atteins</span>
+      </div>
+      {draft.milestones.length > 0 && (
+        <Card padding="12px">
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {draft.milestones.map((m, i) => (
+              <li key={m.key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span aria-hidden className="task-box" style={{ borderRadius: '50%' }} />
+                <textarea className="field field-auto" rows={1} aria-label={`Jalon ${i + 1}`} maxLength={MAX_TITLE}
+                  value={m.label} placeholder="Ex. Premier muscle-up"
+                  onChange={(e) => dispatch({ type: 'milestoneLabel', milestone: m.key, value: e.target.value.replace(/\n/g, ' ') })} />
+                <button className="icon-btn" aria-label={`Supprimer le jalon ${i + 1}`}
+                  onClick={() => dispatch({ type: 'removeMilestone', milestone: m.key })}>×</button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {draft.milestones.length < MAX_MILESTONES && (
+        <div><Button variant="secondary" size="sm" onClick={() => dispatch({ type: 'addMilestone' })}>+ Ajouter un jalon</Button></div>
+      )}
+
+      <div className="form-row">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <label htmlFor="boss-weeks">Boss final</label>
+          <span style={{ fontWeight: 700 }}>{draft.bossWeeks} semaines d’affilée</span>
+        </div>
+        <input id="boss-weeks" type="range" className="range" min={BOSS_WEEKS_MIN} max={BOSS_WEEKS_MAX} step={1}
+          value={draft.bossWeeks} onChange={(e) => dispatch({ type: 'bossWeeks', value: e.target.value })} />
+      </div>
+    </>
+  );
+}
+
+// +0,4 style for small per-session gains.
+const fmtGain1 = (v) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(v);
 
 function Gain({ label, value }) {
   return (

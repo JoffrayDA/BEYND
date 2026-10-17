@@ -21,3 +21,9 @@ export const taskGain = (difficulty, elo, taskCount) =>
 
 // Index of the step the quest is working on (first not done), or -1 when all are.
 export const currentStepIndex = (steps) => steps.findIndex((s) => s.status !== 'done');
+
+// "Cette semaine 3/5 · 2 semaines d'affilée" for a routine.
+export function routineLine(r) {
+  const run = r.weeks_streak > 0 ? ` · ${r.weeks_streak} semaine${r.weeks_streak > 1 ? 's' : ''} d’affilée` : '';
+  return `Cette semaine ${r.week.done}/${r.week.target}${run}${r.boss_done ? ' · boss vaincu' : ''}`;
+}

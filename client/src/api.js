@@ -28,4 +28,7 @@ export const api = {
   goal: (id) => req(`/goals/${id}`),
   updateGoal: (id, patch) => req(`/goals/${id}`, { method: 'PATCH', body: patch }),
   toggleTask: (id) => req(`/tasks/${id}/toggle`, { method: 'POST' }),
+  toggleHabit: (id) => req(`/habits/${id}/toggle`, { method: 'POST' }),
+  toggleMilestone: (id) => req(`/milestones/${id}/toggle`, { method: 'POST' }),
+  levelUp: (goalId, body) => req(`/goals/${goalId}/level-up`, { method: 'POST', body }),
 };

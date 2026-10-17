@@ -49,3 +49,18 @@ test('celebration: step, boss, level-up priority', () => {
 test('avatar tier by level', () => {
   assert.deepEqual([1, 4, 5, 9, 10, 19, 20].map(avatarTier), ['moyen', 'moyen', 'facile', 'facile', 'dur', 'dur', 'elite']);
 });
+
+test('celebrationFor: routine week held and milestone reached', () => {
+  const week = celebrationFor({
+    events: [{ kind: 'session', delta_elo: 26.7, delta_xp: 35 }, { kind: 'week_bonus', delta_elo: 77, delta_xp: 0 }],
+    before: lvl(1), after: lvl(1), goalTitle: 'Callisthénie', stepTitle: null,
+  });
+  assert.deepEqual([week.kind, week.title, week.subtitle, week.bonus], ['step', 'Semaine tenue', 'Callisthénie', 77]);
+  const m = celebrationFor({
+    events: [{ kind: 'milestone', delta_elo: 80, delta_xp: 175 }], before: lvl(1), after: lvl(1),
+    goalTitle: 'Callisthénie', stepTitle: 'Muscle-up',
+  });
+  assert.deepEqual([m.title, m.subtitle, m.xp], ['Jalon atteint', 'Muscle-up', 175]);
+  const undo = celebrationFor({ events: [{ kind: 'milestone', delta_elo: -80, delta_xp: -175 }], before: lvl(1), after: lvl(1) });
+  assert.equal(undo.kind, 'toast');
+});

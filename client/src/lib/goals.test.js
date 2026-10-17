@@ -29,3 +29,11 @@ test('currentStepIndex: first step not done, -1 when all are', () => {
   assert.equal(currentStepIndex([{ status: 'done' }, { status: 'todo' }, { status: 'todo' }]), 1);
   assert.equal(currentStepIndex([{ status: 'done' }]), -1);
 });
+
+test('routineLine: week progress, run of weeks, boss', async () => {
+  const { routineLine } = await import('./goals.js');
+  const r = (o) => ({ week: { done: 3, target: 5 }, weeks_streak: 0, boss_done: false, ...o });
+  assert.equal(routineLine(r()), 'Cette semaine 3/5');
+  assert.equal(routineLine(r({ weeks_streak: 1 })), 'Cette semaine 3/5 · 1 semaine d’affilée');
+  assert.equal(routineLine(r({ weeks_streak: 8, boss_done: true })), 'Cette semaine 3/5 · 8 semaines d’affilée · boss vaincu');
+});
