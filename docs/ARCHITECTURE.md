@@ -274,7 +274,7 @@ Précisions d'implémentation :
 | É8 | Objectifs + Progrès | MVP complet ✔ |
 | É9 | Routines : schéma + migration, moteur, coach, API, puis front (création, quête, détail) | Lecture et callisthénie jouables de bout en bout ✔ |
 | É10 | Nom BEYND, mot de passe, Profil, icônes PWA, démo sur le Wi-Fi, README | Prêt pour la démo ✔ |
-| É11 | Dockerfile + déploiement Coolify (HTTPS) | En ligne sur le VPS |
+| É11 | Dockerfile (Node 24 alpine, multi-étapes, utilisateur `node`, volume `/data`, healthcheck), sauvegarde à chaud, guide Coolify ([`DEPLOY.md`](DEPLOY.md)) | Image testée en local ✔ ; mise en ligne côté utilisateur |
 
 ## 8. Post-MVP (ne pas builder maintenant)
 

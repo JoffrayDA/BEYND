@@ -8,6 +8,7 @@ catégorie ; ton **Elo de vie** est la moyenne de tes catégories.
 - Produit : [`docs/BRIEF.md`](docs/BRIEF.md)
 - Architecture : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Design system : [`design-system/`](design-system/)
+- Déploiement (Docker + Coolify, HTTPS) : [`docs/DEPLOY.md`](docs/DEPLOY.md)
 - Ancienne version fitness : [`docs/archive/`](docs/archive/)
 
 ## Stack
@@ -66,3 +67,15 @@ La clé Gemini ne quitte jamais le serveur.
 | `server/` | `npm run demo:xp` | Amène l'XP à 5 points du niveau suivant, pour voir la célébration à la prochaine coche |
 | `client/` | `npm run build` | Construit la PWA dans `client/dist/` ; `npm start` dans `server/` la sert alors aussi sur :8787 |
 | `client/` | `npm run icons` | Régénère les icônes PWA |
+| `server/` | `npm run backup` | Copie à chaud de la base dans `backups/` (garde les 14 dernières) |
+
+## Mettre en ligne
+
+Une image Docker sert l'API et la PWA sur le port 8787, avec la base dans le
+volume `/data`. Les étapes Coolify (DNS, variables, volume, HTTPS) sont dans
+[`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+```bash
+docker build -t beynd .
+docker run --rm -p 8787:8787 -v beynd-data:/data -e APP_PASSWORD=test beynd
+```

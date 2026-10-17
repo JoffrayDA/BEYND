@@ -8,7 +8,8 @@
     "start": "node --env-file-if-exists=.env index.js",
     "mock": "node index.js",
     "demo:xp": "node demo-xp.js",
-    "test": "node --test"
+    "test": "node --test",
+    "backup": "node backup.js"
   },
   "dependencies": {
     "@google/genai": "^1.52.0",

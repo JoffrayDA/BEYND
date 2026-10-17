@@ -12,5 +12,10 @@ const clientDir = process.env.CLIENT_DIST || '../client/dist';
 const app = createApp({ db, clientDir: existsSync(clientDir) ? clientDir : null });
 
 const port = Number(process.env.PORT) || 8787;
-serve({ fetch: app.fetch, port });
+const server = serve({ fetch: app.fetch, port });
+
+// Docker stops the container with SIGTERM: close the database cleanly.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => server.close(() => { db.close(); process.exit(0); }));
+}
 console.log(`BEYND server on :${port}  (LLM key: ${HAS_KEY ? 'yes' : 'no — mock mode'}, password: ${process.env.APP_PASSWORD ? 'on' : 'off'}${existsSync(clientDir) ? `, client: ${clientDir}` : ''})`);
