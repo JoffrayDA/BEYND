@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --env-file=.env --watch index.js",
-    "start": "node --env-file=.env index.js",
+    "dev": "node --env-file-if-exists=.env --watch index.js",
+    "start": "node --env-file-if-exists=.env index.js",
+    "mock": "node index.js",
     "test": "node --test"
   },
   "dependencies": {

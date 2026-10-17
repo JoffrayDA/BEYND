@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   gain, tier, taskXp, level, clampDifficulty, checkEvents, revertEvents,
-  activeEvents, categoryElo, totalXp, lifeElo, streak, START_ELO,
+  activeEvents, categoryElo, totalXp, lifeElo, streak, bestStreak, START_ELO,
 } from './engine.js';
 
 test('gain: brief examples', () => {
@@ -117,4 +117,11 @@ test('streak: consecutive days ending today or yesterday', () => {
   assert.equal(streak(['2026-10-13', '2026-10-14'], today), 0);      // a full day missed
   assert.equal(streak(['2026-10-10', '2026-10-15', '2026-10-16'], today), 2);
   assert.equal(streak(['2026-09-30', '2026-10-01'], '2026-10-01'), 2); // month boundary
+});
+
+test('bestStreak: longest run ever, duplicates and order ignored', () => {
+  assert.equal(bestStreak([]), 0);
+  assert.equal(bestStreak(['2026-10-16']), 1);
+  assert.equal(bestStreak(['2026-10-12', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-02', '2026-10-11']), 3);
+  assert.equal(bestStreak(['2026-09-30', '2026-10-01']), 2);
 });

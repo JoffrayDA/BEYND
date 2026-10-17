@@ -127,7 +127,15 @@ Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 
 | POST | `/api/tasks/:id/toggle` | Coche ou décoche → événements, puis renvoie l'état mis à jour et les événements produits (pour les célébrations) |
 | GET | `/api/progress` | Courbes d'Elo par catégorie, historique jour par jour, séries |
 
-**Quête du jour** : pour chaque objectif actif, les 3 prochaines tâches non faites de la première étape en `todo`, dans l'ordre. L'objectif principal passe en premier. On y ajoute les tâches cochées aujourd'hui, pour pouvoir les décocher.
+**Quête du jour** : pour chaque objectif actif, les 3 prochaines tâches non faites de la première étape en `todo`, dans l'ordre. L'objectif principal passe en premier. On y ajoute les tâches cochées aujourd'hui, pour pouvoir les décocher. Chaque tâche affiche son gain d'Elo potentiel (`gain / n` à l'Elo courant).
+
+Précisions d'implémentation :
+- Code serveur : `engine.js` (règles pures) ← `game.js` (lectures et écritures en base) ← `app.js` (routes Hono, construites par `createApp({ db, analyze, clock })` pour les tests) ← `index.js` (démarrage).
+- `analyze` renvoie `{ prompt, proposal, preview }`. `preview` contient le palier, l'XP par tâche, l'Elo de la catégorie et le gain potentiel. `POST /api/goals` reçoit ce même objet, éventuellement modifié, et le revalide.
+- Codes d'erreur : 400 (saisie invalide), 404 (introuvable), 409 (conflit, par exemple cocher une tâche d'un objectif archivé), 502 (coach indisponible).
+- « Aujourd'hui » = jour calendaire local du serveur, pas UTC.
+- Archiver l'objectif principal fait passer le rôle d'objectif principal à l'objectif restant le plus ancien.
+- `ELO_DB_PATH` permet d'utiliser une base jetable. `npm run mock` démarre le serveur sans charger `.env`, donc sans Gemini.
 
 ## 6. Front
 

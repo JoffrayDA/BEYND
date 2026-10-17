@@ -116,3 +116,15 @@ export function streak(doneDates, today) {
   while (days.has(d)) { count += 1; d -= 1; }
   return count;
 }
+
+// Longest run of consecutive days ever, for the Progress screen.
+export function bestStreak(doneDates) {
+  const days = [...new Set(doneDates.map(dayNumber))].sort((a, b) => a - b);
+  let best = 0;
+  let run = 0;
+  days.forEach((d, i) => {
+    run = i > 0 && d === days[i - 1] + 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+  });
+  return best;
+}
