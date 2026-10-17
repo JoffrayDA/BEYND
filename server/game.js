@@ -14,11 +14,28 @@ export class Conflict extends Error {}
 const QUEST_TASKS_PER_GOAL = 3;
 const CATEGORY_NAMES = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.name]));
 
-// "Today" is the user's calendar day (server local time), not UTC: a task
-// ticked at 00:30 in Paris belongs to that day, not the previous one.
-export function localDay(date) {
+// The game day starts at DAY_START_HOUR (default 4 h), server local time:
+// a task ticked at 1 h counts for the previous day, like a late night session.
+const DEFAULT_DAY_START_HOUR = 4;
+
+export function parseDayStartHour(raw) {
+  if (raw === undefined || raw === '') return DEFAULT_DAY_START_HOUR;
+  const h = Number(raw);
+  if (Number.isInteger(h) && h >= 0 && h <= 23) return h;
+  console.warn(`DAY_START_HOUR="${raw}" is not an hour 0–23, using ${DEFAULT_DAY_START_HOUR}`);
+  return DEFAULT_DAY_START_HOUR;
+}
+
+export const DAY_START_HOUR = parseDayStartHour(process.env.DAY_START_HOUR);
+
+// Built from local date parts (not by subtracting milliseconds) so a DST
+// change night never shifts the result.
+export function localDay(date, startHour = DAY_START_HOUR) {
+  const d = date.getHours() < startHour
+    ? new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1)
+    : date;
   const p = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 // --- reads -----------------------------------------------------------------

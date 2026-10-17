@@ -133,7 +133,7 @@ Précisions d'implémentation :
 - Code serveur : `engine.js` (règles pures) ← `game.js` (lectures et écritures en base) ← `app.js` (routes Hono, construites par `createApp({ db, analyze, clock })` pour les tests) ← `index.js` (démarrage).
 - `analyze` renvoie `{ prompt, proposal, preview }`. `preview` contient le palier, l'XP par tâche, l'Elo de la catégorie et le gain potentiel. `POST /api/goals` reçoit ce même objet, éventuellement modifié, et le revalide.
 - Codes d'erreur : 400 (saisie invalide), 404 (introuvable), 409 (conflit, par exemple cocher une tâche d'un objectif archivé), 502 (coach indisponible).
-- « Aujourd'hui » = jour calendaire local du serveur, pas UTC.
+- « Aujourd'hui » = journée de jeu, en heure locale du serveur. Elle commence à `DAY_START_HOUR` (4 h par défaut) : une coche à 1 h compte pour la veille. Ça vaut pour `done_on`, la série, l'historique et les courbes.
 - Archiver l'objectif principal fait passer le rôle d'objectif principal à l'objectif restant le plus ancien.
 - `ELO_DB_PATH` permet d'utiliser une base jetable. `npm run mock` démarre le serveur sans charger `.env`, donc sans Gemini.
 

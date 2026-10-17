@@ -24,7 +24,7 @@ function setup({ analyze = mockCoach } = {}) {
     get: (p) => call('GET', p),
     post: (p, j) => call('POST', p, j),
     patch: (p, j) => call('PATCH', p, j),
-    setDay: (d) => { now = new Date(2026, 9, d, 9, 0, 0); },
+    setDay: (d, h = 9, m = 0) => { now = new Date(2026, 9, d, h, m, 0); },
   };
 }
 
@@ -241,4 +241,30 @@ test('rename, invalid status and unknown ids', async () => {
   assert.equal((await api.get('/api/goals/999')).status, 404);
   assert.equal((await api.get('/api/goals/abc')).status, 404);
   assert.equal((await api.post('/api/tasks/999/toggle')).status, 404);
+});
+
+test('a tick at 1 h counts for the previous day (day starts at 4 h)', async () => {
+  const api = setup();
+  const goal = await createPentester(api);
+  const [t1, t2] = goal.steps[0].tasks;
+
+  api.setDay(16, 21); await api.post(`/api/tasks/${t1.id}/toggle`);
+  api.setDay(17, 1, 30);
+  const late = await api.post(`/api/tasks/${t2.id}/toggle`);
+  assert.equal(late.body.state.today, '2026-10-16');
+  assert.ok(late.body.state.quest.some((q) => q.task_id === t2.id && q.done));
+  const detail = (await api.get(`/api/goals/${goal.id}`)).body.goal;
+  assert.equal(detail.steps[0].tasks[1].done_on, '2026-10-16');
+
+  // Both ticks land on the 16th: one history day, streak of 1, not 2.
+  const p = (await api.get('/api/progress')).body;
+  assert.deepEqual(p.history.map((d) => d.date), ['2026-10-16']);
+  assert.equal(p.history[0].tasks.length, 2);
+  assert.deepEqual(p.streak, { current: 1, best: 1 });
+
+  // From 4 h it is the 17th; the streak is still alive until ticked.
+  api.setDay(17, 4);
+  const s = (await api.get('/api/state')).body;
+  assert.equal(s.today, '2026-10-17');
+  assert.equal(s.user.streak, 1);
 });
