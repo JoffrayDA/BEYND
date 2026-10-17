@@ -11,7 +11,7 @@
 | Styling | Tokens CSS du `design-system/`, **un seul thème sombre `data-theme="elo"`** | Nouveau thème, plus de thème par coach |
 | Backend | Hono sur Node ≥ 22 | Repris |
 | DB | SQLite via `node:sqlite` (zéro dépendance native), mono-user implicite (id = 1) | Infra reprise, schéma remplacé |
-| LLM | Gemini `gemini-2.5-flash`, structured output par function calling, mode mock sans clé | Repris, nouveau schéma de sortie |
+| LLM | Gemini `gemini-3.8-flash` (surchargeable via `GEMINI_MODEL`), structured output par function calling, mode mock sans clé | Repris, nouveau schéma de sortie. `gemini-2.5-flash` renvoie 404 aux nouvelles clés. |
 
 La clé `GEMINI_API_KEY` reste dans `server/.env` (ignoré par git). Elle n'est jamais envoyée au client.
 
@@ -95,6 +95,7 @@ Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 
 
 ```json
 {
+  "title": "Devenir pentester (eJPT)",
   "category": "tech",
   "difficulty": 1850,
   "intro": "2–3 phrases qui présentent le plan, adressées à « tu ».",
@@ -107,8 +108,8 @@ Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 
 - Règles du validateur :
   - `category` ∈ liste fermée, sinon `autre`.
   - `difficulty` ramenée dans [400, 2200].
-  - 1 à 8 étapes, 1 à 10 tâches par étape, libellés non vides.
-  - Si la sortie est invalide : une relance, puis une erreur 502.
+  - Au plus 8 étapes et 10 tâches par étape : le surplus est coupé, les libellés vides sont retirés, et le titre manquant est remplacé par le texte saisi.
+  - Sortie inutilisable (aucune étape exploitable, difficulté non numérique, erreur API) : une relance, puis `CoachError` → 502.
 - Le prompt demande des tâches concrètes et cochables, qui renvoient aux ressources externes (TryHackMe, appli de langue…). L'app ne fournit pas de contenu.
 - **Mock sans clé** : renvoie le plan pentester du brief (§9) pour que tout le parcours soit jouable.
 - **Rollback** (repris de BEYND) : l'analyse ne crée rien en base. L'insertion se fait seulement à la confirmation, dans une transaction.
