@@ -127,7 +127,9 @@ Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 
 | POST | `/api/tasks/:id/toggle` | Coche ou décoche → événements, puis renvoie l'état mis à jour et les événements produits (pour les célébrations) |
 | GET | `/api/progress` | Courbes d'Elo par catégorie, historique jour par jour, séries |
 
-**Quête du jour** : pour chaque objectif actif, les 3 prochaines tâches non faites de la première étape en `todo`, dans l'ordre. L'objectif principal passe en premier. On y ajoute les tâches cochées aujourd'hui, pour pouvoir les décocher. Chaque tâche affiche son gain d'Elo potentiel (`gain / n` à l'Elo courant).
+**Quête du jour** : pour chaque objectif actif, les 3 prochaines tâches non faites de la première étape en `todo`, dans l'ordre. L'objectif principal passe en premier. On y ajoute les tâches cochées aujourd'hui, pour pouvoir les décocher. Le gain affiché dépend de l'état de la tâche : pour une tâche à faire, c'est le gain potentiel (`gain / n` à l'Elo courant) ; pour une tâche cochée, c'est ce qu'elle a réellement rapporté.
+
+`/api/state` renvoie aussi la variation du jour : `life_elo.delta_today` et `categories[].delta_today`. Elle se calcule sur la journée de jeu en cours.
 
 Précisions d'implémentation :
 - Code serveur : `engine.js` (règles pures) ← `game.js` (lectures et écritures en base) ← `app.js` (routes Hono, construites par `createApp({ db, analyze, clock })` pour les tests) ← `index.js` (démarrage).
@@ -157,7 +159,16 @@ Précisions d'implémentation :
   - liste de la Quête du jour (reprise de `Log.jsx`) ;
   - parcours de création (saisie → analyse → aperçu modifiable → confirmation) ;
   - célébration à la fin d'une étape et du boss.
-- Retiré : Chat, Onboarding, Settings fitness, mesures de poids, `coaches.js` multi-personas.
+- **Accueil** (de haut en bas) :
+  - avatar pixel, dont la tunique change de couleur avec le niveau (bleu, puis vert au niveau 5, or au 10, rose au 20) ;
+  - niveau, barre d'XP et série (flamme) ;
+  - Elo de vie, sa variation du jour et sa courbe ;
+  - Quête du jour à cocher ;
+  - Elo des catégories actives ;
+  - objectif principal, avec le gain du boss.
+- **Retours après une coche** : une coche simple ou une décoche affiche un toast (Elo, XP). Une étape terminée, un boss vaincu ou un niveau gagné ouvrent une célébration plein écran avec confettis pixel, désactivés si le système demande moins d'animations. La logique est dans `client/src/lib/home.js`, testée.
+- Sans objectif, l'Accueil propose « Créer un objectif », qui ouvre directement le parcours de création.
+- - Retiré : Chat, Onboarding, Settings fitness, mesures de poids, `coaches.js` multi-personas.
 
 ## 7. Ordre de build
 

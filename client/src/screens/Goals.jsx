@@ -7,9 +7,9 @@ import { Screen } from './Screen.jsx';
 import { NewGoal } from './NewGoal.jsx';
 
 // Goals tab. É6: list + creation flow. Filters and goal detail come in É8.
-export function Goals({ state, refresh }) {
+export function Goals({ state, refresh, startCreating = false }) {
   const [goals, setGoals] = useState(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(startCreating);
   const [justCreated, setJustCreated] = useState(null);
   const [error, setError] = useState(false);
 

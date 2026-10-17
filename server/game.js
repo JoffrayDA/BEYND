@@ -145,6 +145,12 @@ function quest(db, today) {
   const nextStep = db.prepare(`SELECT * FROM steps WHERE goal_id = ? AND status = 'todo' ORDER BY ordre LIMIT 1`);
   const nextTasks = db.prepare(`SELECT * FROM tasks WHERE step_id = ? AND done_on IS NULL ORDER BY ordre LIMIT ?`);
   const stepSize = db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE step_id = ?`);
+  // What a ticked task actually earned: its still-active 'task' event.
+  const earned = db.prepare(`
+    SELECT e.delta_elo FROM progress_events e
+     WHERE e.task_id = ? AND e.kind = 'task' AND e.reverts_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM progress_events r WHERE r.reverts_id = e.id)
+     ORDER BY e.id DESC LIMIT 1`);
 
   const items = [];
   for (const g of goals) {
@@ -158,7 +164,10 @@ function quest(db, today) {
       goal_title: g.title,
       category_id: g.category_id,
       step_title: stepTitle,
-      elo_gain: round1(gain(g.difficulty, elo) / stepSize.get(stepId).n),
+      // Undone: what it would earn now. Done: what it earned when ticked.
+      elo_gain: t.done_on != null
+        ? (earned.get(t.id)?.delta_elo ?? 0)
+        : round1(gain(g.difficulty, elo) / stepSize.get(stepId).n),
     });
     for (const t of doneToday.all(g.id, today)) items.push(item(t, t.step_title, t.step_id));
     const step = nextStep.get(g.id);
@@ -203,17 +212,25 @@ function lifeSeries(events, activeIds) {
 
 export function homeState(db, now) {
   const today = localDay(now);
-  const categories = allCategoryElos(db);
-  const active = categories.filter((c) => c.active);
   const events = eventsAsc(db);
+
+  // Net Elo change of the current game day, per category.
+  const todayDelta = {};
+  for (const e of events) {
+    if (localDay(new Date(e.created_at)) !== today) continue;
+    todayDelta[e.category_id] = round1((todayDelta[e.category_id] ?? 0) + e.delta_elo);
+  }
+  const categories = allCategoryElos(db).map((c) => ({ ...c, delta_today: todayDelta[c.id] ?? 0 }));
+  const active = categories.filter((c) => c.active);
+
+  const life = lifeElo(active.map((c) => c.elo));
+  const series = lifeSeries(events, active.map((c) => c.id));
+  const before = series.filter((p) => p.date < today).at(-1)?.elo ?? START_ELO;
   const main = db.prepare(`SELECT * FROM goals WHERE is_main = 1 AND status != 'archived' LIMIT 1`).get();
   return {
     today,
     user: userProfile(db, today),
-    life_elo: {
-      value: lifeElo(active.map((c) => c.elo)),
-      series: lifeSeries(events, active.map((c) => c.id)),
-    },
+    life_elo: { value: life, delta_today: round1(life - before), series },
     categories,
     quest: quest(db, today),
     main_goal: main ? goalSummary(db, main) : null,

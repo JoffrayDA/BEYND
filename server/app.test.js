@@ -268,3 +268,40 @@ test('a tick at 1 h counts for the previous day (day starts at 4 h)', async () =
   assert.equal(s.today, '2026-10-17');
   assert.equal(s.user.streak, 1);
 });
+
+test('daily deltas: per category and for life Elo, reset on a new game day', async () => {
+  const api = setup();
+  const goal = await createPentester(api);
+  await api.post('/api/goals', tinyPlan);
+  const [t1, t2, t3] = goal.steps[0].tasks;
+
+  api.setDay(16); await api.post(`/api/tasks/${t1.id}/toggle`);           // tech 1000 → 1021
+  api.setDay(17);
+  let s = (await api.get('/api/state')).body;
+  assert.equal(s.categories.find((c) => c.id === 'tech').delta_today, 0);
+  assert.equal(s.life_elo.delta_today, 0);
+
+  await api.post(`/api/tasks/${t2.id}/toggle`);                           // +20.6
+  s = (await api.post(`/api/tasks/${t3.id}/toggle`)).body.state;           // +20.2
+  assert.equal(s.categories.find((c) => c.id === 'tech').delta_today, 40.8);
+  assert.equal(s.categories.find((c) => c.id === 'autre').delta_today, 0);
+  // Life Elo = mean(tech, autre): (1061.8 + 1000) / 2 = 1030.9, was (1021 + 1000) / 2 = 1010.5
+  assert.equal(s.life_elo.value, 1030.9);
+  assert.equal(s.life_elo.delta_today, 20.4);
+
+  // Unticking today's task removes its share from today's delta.
+  s = (await api.post(`/api/tasks/${t3.id}/toggle`)).body.state;
+  assert.equal(s.categories.find((c) => c.id === 'tech').delta_today, 20.6);
+});
+
+test('quest: a ticked task shows what it earned, not the current potential', async () => {
+  const api = setup();
+  const goal = await createPentester(api);
+  const [t1, t2] = goal.steps[0].tasks;
+  await api.post(`/api/tasks/${t1.id}/toggle`);                 // +21 at Elo 1000
+  const s = (await api.post(`/api/tasks/${t2.id}/toggle`)).body.state;   // +20.6
+  const q = Object.fromEntries(s.quest.map((i) => [i.task_id, i]));
+  assert.equal(q[t1.id].elo_gain, 21);
+  assert.equal(q[t2.id].elo_gain, 20.6);
+  assert.ok(s.quest.filter((i) => !i.done).every((i) => i.elo_gain === 20.2)); // next potential at 1041.6
+});

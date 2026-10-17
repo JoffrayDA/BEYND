@@ -17,6 +17,9 @@ export function App() {
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('home');
+  // Home's empty state opens the creation flow directly on the Goals tab.
+  const [createOnOpen, setCreateOnOpen] = useState(false);
+  const go = (id, create = false) => { setCreateOnOpen(create); setTab(id); };
 
   const refresh = useCallback(async () => {
     try {
@@ -53,14 +56,14 @@ export function App() {
   return (
     <div className="app-frame">
       <main style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {tab === 'home' && <Home state={state} refresh={refresh} />}
-        {tab === 'goals' && <Goals state={state} refresh={refresh} />}
+        {tab === 'home' && <Home state={state} setState={setState} onNewGoal={() => go('goals', true)} onOpenGoals={() => go('goals')} />}
+        {tab === 'goals' && <Goals state={state} refresh={refresh} startCreating={createOnOpen} />}
         {tab === 'progress' && <Placeholder title="Progrès" step="É8">Une courbe d'Elo par catégorie, l'historique et tes séries.</Placeholder>}
         {tab === 'profile' && <Placeholder title="Profil" step="É9">Ton personnage et tes réglages.</Placeholder>}
       </main>
       <nav className="tabbar" aria-label="Navigation principale">
         {TABS.map(([id, label]) => (
-          <button key={id} data-active={tab === id} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
+          <button key={id} data-active={tab === id} aria-current={tab === id ? 'page' : undefined} onClick={() => go(id)}>
             <PixelIcon name={id} />
             <span>{label}</span>
           </button>
