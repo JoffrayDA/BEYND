@@ -20,13 +20,19 @@ La clé `GEMINI_API_KEY` reste dans `server/.env` (ignoré par git). Elle n'est 
 ```
 user              id, name, created_at
 categories        id (slug), name, ordre                        -- préremplie
-goals             id, user_id, category_id, title, prompt (texte saisi),
-                  difficulty (400–2200), coach_intro, is_main, status
+goals             id, user_id, category_id, kind ('project' | 'routine'), title,
+                  prompt (texte saisi), difficulty (400–2200), coach_intro,
+                  boss_weeks (routine : 4–12 | NULL), is_main, status
                   ('active' | 'done' | 'archived'), created_at, completed_at
 steps             id, goal_id, title, ordre, status ('todo' | 'done'), completed_at
+                  -- routine : un jalon (aucune tâche, coché directement)
 tasks             id, step_id, label, ordre, xp, done_on (date ISO | NULL)
-progress_events   id, user_id, category_id, goal_id, step_id, task_id,
-                  kind ('task' | 'step_bonus' | 'boss'),
+habits            id, goal_id, label, per_week (1–7), ordre, xp
+habit_logs        id, habit_id, day (date ISO), UNIQUE (habit_id, day)
+progress_events   id, user_id, category_id, goal_id, step_id, task_id, habit_id,
+                  week (lundi ISO | NULL),
+                  kind ('task' | 'step_bonus' | 'boss' | 'session' |
+                        'week_bonus' | 'milestone' | 'demo'),
                   delta_xp, delta_elo (REAL), elo_after (REAL),
                   reverts_id (NULL | id de l'événement annulé), created_at
 ```
@@ -38,6 +44,7 @@ progress_events   id, user_id, category_id, goal_id, step_id, task_id,
   - XP = `Σ delta_xp`.
 - Catégories initiales : Tech, Langues, Sport, Carrière, Créatif, Autre. La liste est fermée et le validateur LLM la vérifie.
 - Le premier objectif créé devient automatiquement `is_main`.
+- **Migration** : SQLite ne sait pas modifier une contrainte `CHECK`. Si la base existante ne connaît pas encore les nouveaux `kind`, `progress_events` est reconstruite une fois (nouvelle table, copie, renommage) dans une transaction. Les colonnes `kind` et `boss_weeks` de `goals` sont ajoutées avec `addColumn`, et les objectifs existants deviennent des projets. Les lignes écrites par `npm run demo:xp` passent au `kind` `demo`.
 
 ## 3. Règles de jeu (moteur pur `server/engine.js`, testé)
 
@@ -79,11 +86,46 @@ Exemple : objectif pentester (1850), Elo Tech 1000, étape de 5 tâches.
 - Niveau = `floor(XP / 1000) + 1`.
 - Série = nombre de jours consécutifs, jusqu'à aujourd'hui ou hier, ayant au moins une tâche avec `done_on` à cette date.
 
+### Routines
+
+Une routine n'a pas d'étapes à suivre dans l'ordre. Elle a :
+- 1 à 3 **habitudes**, chacune avec une fréquence `per_week` (1 à 7) ;
+- 0 à 8 **jalons**, sans ordre, stockés dans `steps` sans tâches ;
+- un **boss** : `boss_weeks` semaines tenues d'affilée (4 à 12, 8 par défaut).
+
+La semaine va du lundi au dimanche, en journées de jeu. Notations supplémentaires :
+- `W` = Σ `per_week` des habitudes de la routine, soit le nombre de séances prévues par semaine ;
+- `k` = nombre de séances de l'habitude déjà faites cette semaine, avant la coche.
+
+| Événement | Δ Elo | XP |
+|---|---|---|
+| Séance cochée (`k < per_week`) | `gain / W`, arrondi à 0,1 (`session`) | XP du palier |
+| Séance en plus (`k ≥ per_week`) | `gain / W / 2`, arrondi à 0,1 (`session`) | XP du palier / 2 |
+| La séance complète la semaine (chaque habitude atteint `per_week`) | bonus `+ gain`, une fois par semaine (`week_bonus`, avec `week`) | — |
+| Jalon coché | `+ gain` (`milestone`) | XP du palier × 5 |
+| Semaines tenues d'affilée = `boss_weeks` | `+ gain × 2` (`boss`), une seule fois | — |
+
+- Une habitude se coche au plus une fois par jour de jeu, et seulement pour **aujourd'hui** : pas de rattrapage des jours passés.
+- Sur une semaine tenue, une routine rapporte donc environ `2 × gain`.
+  - Callisthénie (1600, 3 séances/semaine), Elo Sport 1000 : `gain = 80`. Une séance ≈ +27, le bonus de semaine tenue ≈ +75, le muscle-up ≈ +70.
+  - Lecture (900, 5 séances/semaine), Elo 1000 : `gain = 10`. Une séance +2, la semaine tenue +10.
+- L'Elo se stabilise tout seul : quand il dépasse la difficulté d'environ 180, le gain tombe au plancher de 2. Une routine facile ne gonfle donc pas l'Elo indéfiniment.
+- **Semaines tenues d'affilée** : on compte les semaines terminées et tenues qui se suivent jusqu'à la semaine dernière, plus la semaine en cours si elle est déjà tenue. Une semaine en cours pas encore tenue ne casse pas la série.
+- Après le boss, la routine reste `active` : on continue à la suivre. `completed_at` garde la date du boss, qui ne se gagne qu'une fois.
+- **Décocher** :
+  - une séance d'aujourd'hui supprime sa ligne de `habit_logs` et annule son événement `session` ;
+  - si la semaine n'est plus tenue, son `week_bonus` est annulé, et le `boss` aussi s'il venait de cette semaine ;
+  - décocher un jalon annule son `milestone`.
+
+  Même principe que pour les projets : on enregistre l'opposé exact, sans recalcul.
+- Pas de perte d'Elo pour une semaine ratée : seule la série de semaines repart de zéro. La baisse par inactivité reste hors MVP.
+- Série de jours (voir XP, niveau, série) : un jour compte s'il a au moins une tâche **ou une séance**.
+
 ### Elo de vie
 Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 1000 s'il n'y en a aucune.
 
 ### Hors MVP
-- Rendements décroissants (ils supposent des tâches récurrentes : v1.1).
+- Rendements décroissants dans la journée : inutiles, puisqu'une habitude ne se coche qu'une fois par jour. Les séances au-delà de la fréquence rapportent moitié moins (voir Routines).
 - Baisse d'Elo par inactivité (règle à valider).
 - Recalibrage communautaire (v2).
 
@@ -105,7 +147,10 @@ Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 
 }
 ```
 
+- **Routine** : même fonction, avec `kind: "routine"`, `habits` (`[{ label, per_week }]`), `milestones` (`[string]`) et `boss_weeks` à la place de `steps`. Le prompt explique quand choisir chaque type (voir BRIEF §5). Pour une routine, la difficulté mesure l'exigence du rythme, plus celle des jalons.
 - Règles du validateur :
+  - `kind` absent ou inconnu → `project`. Une routine sans habitude exploitable → `CoachError` (relance).
+  - Routine : au plus 3 habitudes et 8 jalons. `per_week` ramené dans [1, 7], 3 par défaut ; `boss_weeks` dans [4, 12], 8 par défaut. Les champs du type non choisi sont ignorés.
   - `category` ∈ liste fermée, sinon `autre`.
   - `difficulty` ramenée dans [400, 2200].
   - Au plus 8 étapes et 10 tâches par étape : le surplus est coupé, les libellés vides sont retirés, et le titre manquant est remplacé par le texte saisi.
@@ -125,9 +170,11 @@ Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 
 | GET | `/api/goals/:id` | Détail : étapes et tâches |
 | PATCH | `/api/goals/:id` | Titre, `is_main`, `status` (archiver) |
 | POST | `/api/tasks/:id/toggle` | Coche ou décoche → événements, puis renvoie l'état mis à jour et les événements produits (pour les célébrations) |
+| POST | `/api/habits/:id/toggle` | Coche ou décoche la séance d'aujourd'hui. Même réponse |
+| POST | `/api/milestones/:id/toggle` | Coche ou décoche un jalon de routine. Même réponse |
 | GET | `/api/progress` | Courbes d'Elo par catégorie, historique jour par jour, séries |
 
-**Quête du jour** : pour chaque objectif actif, les 3 prochaines tâches non faites de la première étape en `todo`, dans l'ordre. L'objectif principal passe en premier. On y ajoute les tâches cochées aujourd'hui, pour pouvoir les décocher. Le gain affiché dépend de l'état de la tâche : pour une tâche à faire, c'est le gain potentiel (`gain / n` à l'Elo courant) ; pour une tâche cochée, c'est ce qu'elle a réellement rapporté.
+**Quête du jour** : pour chaque objectif actif, les 3 prochaines tâches non faites de la première étape en `todo`, dans l'ordre. L'objectif principal passe en premier. On y ajoute les tâches cochées aujourd'hui, pour pouvoir les décocher. **Routines** : chaque habitude pas encore faite aujourd'hui et dont la semaine n'a pas atteint `per_week`, plus les séances faites aujourd'hui. Une séance en plus reste possible depuis le détail de l'objectif. Les items de la quête portent un `type` (`task` | `habit`). Le gain affiché dépend de l'état de la tâche : pour une tâche à faire, c'est le gain potentiel (`gain / n` à l'Elo courant) ; pour une tâche cochée, c'est ce qu'elle a réellement rapporté.
 
 `/api/state` renvoie aussi la variation du jour : `life_elo.delta_today` et `categories[].delta_today`. Elle se calcule sur la journée de jeu en cours.
 
@@ -174,6 +221,10 @@ Précisions d'implémentation :
   - chaque carte montre le palier, la difficulté, l'avancement, le gain d'une étape et celui du boss (×2) à l'Elo courant ;
   - le détail d'un objectif liste toutes les étapes et tâches, cochables comme dans la Quête du jour (même toast, mêmes célébrations, via `useTaskToggle`). Les étapes franchies sont repliées. On peut renommer, définir comme principal, archiver ou réactiver ;
   - la carte « Objectif principal » de l'Accueil ouvre directement son détail. Logique pure dans `client/src/lib/goals.js`, testée.
+- **Routines** :
+  - l'aperçu de création propose un sélecteur Projet / Routine. En routine, on édite les habitudes (libellé, fréquence de 1 à 7 par semaine), les jalons et le nombre de semaines du boss ;
+  - dans le détail, chaque habitude affiche sa semaine en pastilles (3/5), avec la séance du jour à cocher. Viennent ensuite les jalons à cocher, puis le boss (« 2/8 semaines tenues d'affilée ») ;
+  - la carte de la liste affiche « Cette semaine 3/5 · 2 semaines d'affilée » au lieu de l'étape en cours.
 - **Progrès** :
   - séries (actuelle, meilleure, jours joués) et grille d'activité des 5 dernières semaines, lundi en premier ;
   - une courbe d'Elo par catégorie ayant un objectif ou de l'activité, chacune avec sa variation depuis 1000 ;
@@ -193,8 +244,9 @@ Précisions d'implémentation :
 | É6 | Création d'objectif | Cas pentester créé de bout en bout |
 | É7 | Accueil | Cocher une tâche met tout à jour |
 | É8 | Objectifs + Progrès | MVP complet ✔ |
-| É9 | Finitions, nettoyage du code fitness, README, manifeste PWA | Prêt pour la démo |
+| É9 | Routines : schéma + migration, moteur, coach, API, puis front (création, quête, détail) | Lecture et callisthénie jouables de bout en bout |
+| É10 | Finitions, nettoyage du code fitness, README, manifeste PWA | Prêt pour la démo |
 
 ## 8. Post-MVP (ne pas builder maintenant)
 
-Tâches récurrentes et rendements décroissants, baisse d'Elo par inactivité, raids du dimanche, collection de monstres, recalibrage communautaire, auth et multi-user (→ Postgres).
+Baisse d'Elo par inactivité, raids du dimanche, collection de monstres, recalibrage communautaire, auth et multi-user (→ Postgres).

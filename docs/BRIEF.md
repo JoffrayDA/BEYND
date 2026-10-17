@@ -9,22 +9,27 @@ Différenciation : un **coach IA** construit le plan à partir d'un objectif, es
 
 ## 2. Boucle centrale
 1. L'utilisateur crée un objectif (ex. « Devenir pentester »).
-2. Le coach l'analyse : catégorie, difficulté (rating), étapes, tâches.
-3. Chaque jour, l'accueil affiche la « Quête du jour » (tâches à cocher).
-4. Cocher une tâche → XP (niveau du personnage) + Elo de la catégorie.
+2. Le coach l'analyse : type (projet ou routine), catégorie, difficulté (rating), puis étapes et tâches pour un projet, ou habitudes et jalons pour une routine.
+3. Chaque jour, l'accueil affiche la « Quête du jour » : les tâches des projets et les séances prévues des routines.
+4. Cocher une tâche ou une séance → XP (niveau du personnage) + Elo de la catégorie.
 5. La progression se voit : courbe d'Elo, séries de jours, étapes franchies, « boss final » (l'objectif).
 
 ## 3. Concepts
 | Concept | Définition |
 |---|---|
-| Objectif | Ce qu'on veut atteindre. A une catégorie, une difficulté, des étapes. |
+| Objectif | Ce qu'on veut atteindre. A une catégorie, une difficulté et un **type** : projet ou routine. |
+| Projet | Objectif qu'on termine une fois, par une suite d'étapes dans l'ordre (ex. « Devenir pentester »). |
+| Routine | Objectif qui consiste à tenir un rythme (ex. « Reprendre la lecture », « Callisthénie jusqu'au muscle-up »). Il a des habitudes et, éventuellement, des jalons. |
+| Habitude | Action récurrente d'une routine, avec une fréquence par semaine (ex. « Lire 20 min », 5 fois/semaine). On la coche au plus une fois par jour : c'est une **séance**. |
+| Semaine tenue | Semaine (lundi → dimanche) où chaque habitude de la routine a atteint sa fréquence. |
+| Jalon | Réussite ponctuelle d'une routine, sans ordre imposé (ex. « Premier muscle-up »). On le coche le jour où on l'atteint. |
 | Étape | Jalon d'un objectif (ex. « Pre Security »). |
 | Tâche | Action concrète et cochable, rattachée à une étape. Donne de l'XP. |
 | Catégorie | Tech, Langues, Sport, Carrière, Créatif… Chaque catégorie a **son propre Elo**. |
 | Difficulté | Rating de l'objectif (400 → 2200). Paliers : Facile < 800, Moyen < 1400, Dur < 1800, Élite ≥ 1800. |
 | XP / Niveau | Progression globale du personnage (avatar pixel). 1 000 XP par niveau. |
 | Elo de vie | Moyenne des Elo de catégorie. |
-| Série | Nombre de jours consécutifs avec au moins une tâche cochée. |
+| Série | Nombre de jours consécutifs avec au moins une tâche ou une séance cochée. |
 
 ## 4. Règles d'équité (Elo)
 Principe : comme aux échecs, on ne compare jamais deux catégories entre elles (Bullet ≠ Blitz), et un objectif au-dessus de son niveau rapporte plus qu'un objectif facile (comme les puzzles notés de chess.com).
@@ -32,7 +37,8 @@ Principe : comme aux échecs, on ne compare jamais deux catégories entre elles 
 - **Gain à la complétion d'une étape ou d'un objectif** :
   `gain = max(2, round((difficulté − Elo_catégorie) / 10 + 20))`
   Ex. italien (1900) avec Elo Langues 980 → +112. Ranger son bureau (450) avec Elo Carrière 1050 → +2.
-- **Rendements décroissants** : une tâche identique répétée le même jour rapporte de moins en moins.
+- **Routines** : la régularité rapporte plus que le volume. Une séance rapporte un peu ; une semaine tenue rapporte autant qu'une étape de projet, un jalon aussi. Le boss d'une routine est une série de semaines tenues d'affilée.
+- **Rendements décroissants** : une habitude ne se coche qu'une fois par jour, et les séances au-delà de la fréquence prévue rapportent moitié moins. Comme le gain baisse quand l'Elo monte, une routine facile finit par ne plus rapporter que le minimum : pour progresser, il faut viser plus haut.
 - **Perte** : inactivité prolongée dans une catégorie → baisse légère (règle exacte à valider).
 - **Calibrage de la difficulté** : v1 = estimée par le coach IA. v2 = recalibrée avec les données de la communauté (si 90 % réussissent, la difficulté baisse).
 - Elo de départ par catégorie : 1000.
@@ -44,6 +50,7 @@ Principe : comme aux échecs, on ne compare jamais deux catégories entre elles 
 - Sortie attendue en JSON :
 ```json
 {
+  "kind": "project",
   "category": "Tech",
   "difficulty": 1850,
   "steps": [
@@ -51,14 +58,27 @@ Principe : comme aux échecs, on ne compare jamais deux catégories entre elles 
   ]
 }
 ```
+Pour une routine :
+```json
+{
+  "kind": "routine",
+  "category": "Sport",
+  "difficulty": 1600,
+  "habits": [{ "label": "Séance callisthénie (45 min)", "per_week": 3 }],
+  "milestones": ["10 tractions strictes", "Pompe en équilibre contre le mur", "Premier muscle-up"],
+  "boss_weeks": 8
+}
+```
+- Le coach choisit le type. Un objectif du genre « tenir un rythme » (lecture, sport régulier, pratique d'une langue) devient une routine. Un objectif avec une fin claire et un parcours (certification, projet) reste un projet. L'utilisateur peut changer le type dans l'aperçu.
 
 ## 6. Périmètre
 **MVP (v1, solo)**
-- Création d'objectif + analyse par le coach (catégorie, difficulté, étapes, tâches)
+- Création d'objectif + analyse par le coach (type, catégorie, difficulté, étapes et tâches, ou habitudes et jalons)
 - Accueil : avatar + niveau/XP, Elo de vie + courbe, Elo par catégorie, Quête du jour, objectif principal
 - Écran Objectifs : filtres par catégorie, difficulté + gain potentiel par objectif
 - Écran Progrès : courbes d'Elo par catégorie, historique, séries
-- Cocher une tâche → XP + mise à jour Elo
+- Cocher une tâche ou une séance → XP + mise à jour Elo
+- Routines : habitudes hebdomadaires, semaines tenues, jalons, boss = série de semaines
 
 **v2**
 - Raids du dimanche entre potes : un monstre commun avec des points de vie, chaque tâche cochée dans la semaine lui inflige des dégâts, l'équipe l'achève le dimanche
