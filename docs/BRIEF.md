@@ -39,6 +39,7 @@ Principe : comme aux échecs, on ne compare jamais deux catégories entre elles 
   Ex. italien (1900) avec Elo Langues 980 → +112. Ranger son bureau (450) avec Elo Carrière 1050 → +2.
 - **Routines** : la régularité rapporte plus que le volume. Une séance rapporte un peu ; une semaine tenue rapporte autant qu'une étape de projet, un jalon aussi. Le boss d'une routine est une série de semaines tenues d'affilée.
 - **Rendements décroissants** : une habitude ne se coche qu'une fois par jour, et les séances au-delà de la fréquence prévue rapportent moitié moins. Comme le gain baisse quand l'Elo monte, une routine facile finit par ne plus rapporter que le minimum : pour progresser, il faut viser plus haut.
+- **Monter d'un cran** : le gain d'une routine suit la formule de difficulté, donc il tend vers +2 dès que l'Elo de la catégorie dépasse la difficulté de la routine. À ce moment, la Quête du jour propose de monter d'un cran : une séance de plus par semaine, ou une habitude plus exigeante (ex. « Lire 20 min » → « Lire 30 min »). Chaque cran ajoute 150 à la difficulté.
 - **Perte** : inactivité prolongée dans une catégorie → baisse légère (règle exacte à valider).
 - **Calibrage de la difficulté** : v1 = estimée par le coach IA. v2 = recalibrée avec les données de la communauté (si 90 % réussissent, la difficulté baisse).
 - Elo de départ par catégorie : 1000.

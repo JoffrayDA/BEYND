@@ -22,7 +22,8 @@ user              id, name, created_at
 categories        id (slug), name, ordre                        -- préremplie
 goals             id, user_id, category_id, kind ('project' | 'routine'), title,
                   prompt (texte saisi), difficulty (400–2200), coach_intro,
-                  boss_weeks (routine : 4–12 | NULL), is_main, status
+                  boss_weeks (routine : 4–12 | NULL), level_up_snoozed_until (date | NULL),
+                  is_main, status
                   ('active' | 'done' | 'archived'), created_at, completed_at
 steps             id, goal_id, title, ordre, status ('todo' | 'done'), completed_at
                   -- routine : un jalon (aucune tâche, coché directement)
@@ -110,6 +111,14 @@ La semaine va du lundi au dimanche, en journées de jeu. Notations supplémentai
   - Callisthénie (1600, 3 séances/semaine), Elo Sport 1000 : `gain = 80`. Une séance ≈ +27, le bonus de semaine tenue ≈ +75, le muscle-up ≈ +70.
   - Lecture (900, 5 séances/semaine), Elo 1000 : `gain = 10`. Une séance +2, la semaine tenue +10.
 - L'Elo se stabilise tout seul : quand il dépasse la difficulté d'environ 180, le gain tombe au plancher de 2. Une routine facile ne gonfle donc pas l'Elo indéfiniment.
+- **Monter d'un cran** : le gain d'une routine utilise la même formule de difficulté que les projets, donc il tend vers +2 quand l'Elo de la catégorie dépasse la difficulté de la routine.
+  - Condition : routine active, `elo_catégorie > difficulté`, difficulté < 2200, et pas de report en cours (`level_up_snoozed_until` vide ou passé).
+  - La Quête du jour affiche alors une proposition pour cette routine, avec deux choix :
+    - **fréquence** : `per_week + 1` sur une habitude choisie (impossible à 7) ;
+    - **exigence** : nouveau libellé pour une habitude (ex. « Lire 20 min » → « Lire 30 min »).
+  - Les deux choix ajoutent **+150** à la difficulté (plafond 2200). L'XP des habitudes est recalculée avec le nouveau palier, et la nouvelle fréquence s'applique dès la semaine en cours. Les événements passés ne changent pas.
+  - « Plus tard » reporte la proposition de 7 jours.
+  - Pas d'appel au coach : le cran est une règle fixe (`LEVEL_UP_STEP = 150` dans `engine.js`).
 - **Semaines tenues d'affilée** : on compte les semaines terminées et tenues qui se suivent jusqu'à la semaine dernière, plus la semaine en cours si elle est déjà tenue. Une semaine en cours pas encore tenue ne casse pas la série.
 - Après le boss, la routine reste `active` : on continue à la suivre. `completed_at` garde la date du boss, qui ne se gagne qu'une fois.
 - **Décocher** :
@@ -172,9 +181,10 @@ Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 
 | POST | `/api/tasks/:id/toggle` | Coche ou décoche → événements, puis renvoie l'état mis à jour et les événements produits (pour les célébrations) |
 | POST | `/api/habits/:id/toggle` | Coche ou décoche la séance d'aujourd'hui. Même réponse |
 | POST | `/api/milestones/:id/toggle` | Coche ou décoche un jalon de routine. Même réponse |
+| POST | `/api/goals/:id/level-up` | Monter d'un cran : `{ mode: 'frequency', habit_id }`, `{ mode: 'harder', habit_id, label }` ou `{ mode: 'snooze' }`. Renvoie l'objectif et l'état |
 | GET | `/api/progress` | Courbes d'Elo par catégorie, historique jour par jour, séries |
 
-**Quête du jour** : pour chaque objectif actif, les 3 prochaines tâches non faites de la première étape en `todo`, dans l'ordre. L'objectif principal passe en premier. On y ajoute les tâches cochées aujourd'hui, pour pouvoir les décocher. **Routines** : chaque habitude pas encore faite aujourd'hui et dont la semaine n'a pas atteint `per_week`, plus les séances faites aujourd'hui. Une séance en plus reste possible depuis le détail de l'objectif. Les items de la quête portent un `type` (`task` | `habit`). Le gain affiché dépend de l'état de la tâche : pour une tâche à faire, c'est le gain potentiel (`gain / n` à l'Elo courant) ; pour une tâche cochée, c'est ce qu'elle a réellement rapporté.
+**Quête du jour** : pour chaque objectif actif, les 3 prochaines tâches non faites de la première étape en `todo`, dans l'ordre. L'objectif principal passe en premier. On y ajoute les tâches cochées aujourd'hui, pour pouvoir les décocher. **Routines** : chaque habitude pas encore faite aujourd'hui et dont la semaine n'a pas atteint `per_week`, plus les séances faites aujourd'hui. Une séance en plus reste possible depuis le détail de l'objectif. Les items de la quête portent un `type` (`task` | `habit`). `/api/state` renvoie aussi `level_ups` : les routines qui peuvent monter d'un cran, affichées en tête de la Quête du jour. Le gain affiché dépend de l'état de la tâche : pour une tâche à faire, c'est le gain potentiel (`gain / n` à l'Elo courant) ; pour une tâche cochée, c'est ce qu'elle a réellement rapporté.
 
 `/api/state` renvoie aussi la variation du jour : `life_elo.delta_today` et `categories[].delta_today`. Elle se calcule sur la journée de jeu en cours.
 
