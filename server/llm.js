@@ -5,7 +5,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { SYSTEM_PROMPT } from './coach.js';
 import { CATEGORIES } from './db.js';
-import { clampDifficulty } from './engine.js';
+import { clampDifficulty, MAX_STEPS, MAX_TASKS } from './engine.js';
 
 const KEY = process.env.GEMINI_API_KEY;
 // gemini-2.5-flash is closed to new keys (404 since 2026); the API points to 3.8.
@@ -13,8 +13,7 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const defaultClient = KEY ? new GoogleGenAI({ apiKey: KEY }) : null;
 export const HAS_KEY = Boolean(KEY);
 
-export const MAX_STEPS = 8;
-export const MAX_TASKS = 10;
+export { MAX_STEPS, MAX_TASKS };
 const MAX_TITLE = 80;
 const MAX_LABEL = 160;
 

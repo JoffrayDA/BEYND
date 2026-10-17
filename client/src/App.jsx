@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { api } from './api.js';
 import { Home } from './screens/Home.jsx';
 import { Placeholder } from './screens/Screen.jsx';
+import { Goals } from './screens/Goals.jsx';
 import { PixelIcon } from './components/PixelIcon.jsx';
 import { Button } from './ds.js';
 
@@ -53,7 +54,7 @@ export function App() {
     <div className="app-frame">
       <main style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {tab === 'home' && <Home state={state} refresh={refresh} />}
-        {tab === 'goals' && <Placeholder title="Objectifs" step="É6 et É8">Tes objectifs, filtrés par catégorie, avec difficulté et gain potentiel.</Placeholder>}
+        {tab === 'goals' && <Goals state={state} refresh={refresh} />}
         {tab === 'progress' && <Placeholder title="Progrès" step="É8">Une courbe d'Elo par catégorie, l'historique et tes séries.</Placeholder>}
         {tab === 'profile' && <Placeholder title="Profil" step="É9">Ton personnage et tes réglages.</Placeholder>}
       </main>

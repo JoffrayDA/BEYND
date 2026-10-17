@@ -7,6 +7,10 @@ export const DIFFICULTY_MIN = 400;
 export const DIFFICULTY_MAX = 2200;
 export const XP_PER_LEVEL = 1000;
 
+// Plan size limits (coach output and user edits alike).
+export const MAX_STEPS = 8;
+export const MAX_TASKS = 10;
+
 // Ordered by upper bound; the last tier has no ceiling.
 export const TIERS = [
   { id: 'facile', label: 'Facile', below: 800, xp: 10 },

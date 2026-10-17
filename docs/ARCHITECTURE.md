@@ -143,6 +143,8 @@ Précisions d'implémentation :
 - Thème `elo` : palette du brief (§8), polices Archivo et Silkscreen. Silkscreen est réservée aux labels pixel (niveau, XP, badges). Le thème est défini dans `design-system/tokens/theme-elo.css` et appliqué par `data-theme="elo"` sur `<html>`.
   - Paliers : Facile en vert, Moyen en bleu, Dur en or, Élite en rose. Le brief ne donne pas de couleur pour « Dur ».
   - Couleurs de catégorie : Tech bleu, Langues rose, Sport vert, Carrière or, Créatif orange, Autre gris chaud. Elles servent pour les tracés et les pastilles, jamais pour le texte.
+- **Création d'objectif** (onglet Objectifs → « + Nouveau ») : texte saisi → analyse du coach → aperçu modifiable → confirmation. Dans l'aperçu, on peut modifier le titre, la catégorie, la difficulté (avec « rétablir » l'estimation du coach), les étapes et les tâches. La logique d'édition est dans `client/src/lib/plan.js`, sans React et testée avec `npm test`.
+- **Le client importe `server/engine.js` directement** (le module n'a aucune dépendance). Le gain potentiel, le palier, l'XP et les limites (8 étapes, 10 tâches) viennent donc de la même source des deux côtés.
 - **Une courbe par catégorie (petits multiples), jamais superposées.** Ça applique la règle « on ne compare pas deux catégories ». C'est aussi nécessaire en pratique : avec 6 couleurs sur fond sombre, aucune palette ne reste distinguable par paires (le validateur dataviz échoue). `LineChart` ne trace donc qu'une série. Chaque courbe d'Elo part de 1000 la veille du premier point.
 - Repris de BEYND :
   - `api.js` ;
