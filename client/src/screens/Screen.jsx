@@ -12,12 +12,3 @@ export function Screen({ title, action = null, children }) {
     </div>
   );
 }
-
-export function Placeholder({ title, step, children }) {
-  return (
-    <Screen title={title}>
-      <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>{children}</p>
-      <p style={{ color: 'var(--color-text-subtle)', margin: 0, fontSize: 'var(--text-xs)' }}>Arrive à l'étape {step}.</p>
-    </Screen>
-  );
-}

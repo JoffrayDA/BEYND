@@ -1,12 +1,16 @@
 import { serve } from '@hono/node-server';
 import { openDb } from './db.js';
 import { createApp } from './app.js';
+import { existsSync } from 'node:fs';
 import { HAS_KEY } from './llm.js';
 
 // ELO_DB_PATH lets manual test runs use a throwaway database.
 const db = process.env.ELO_DB_PATH ? openDb(process.env.ELO_DB_PATH) : openDb();
-const app = createApp({ db });
+// The built client (npm run build in client/) is served when present, so one
+// process serves the whole app in production. CLIENT_DIST overrides the path.
+const clientDir = process.env.CLIENT_DIST || '../client/dist';
+const app = createApp({ db, clientDir: existsSync(clientDir) ? clientDir : null });
 
 const port = Number(process.env.PORT) || 8787;
 serve({ fetch: app.fetch, port });
-console.log(`Elo de vie server on :${port}  (LLM key: ${HAS_KEY ? 'yes' : 'no — mock mode'})`);
+console.log(`BEYND server on :${port}  (LLM key: ${HAS_KEY ? 'yes' : 'no — mock mode'}, password: ${process.env.APP_PASSWORD ? 'on' : 'off'}${existsSync(clientDir) ? `, client: ${clientDir}` : ''})`);

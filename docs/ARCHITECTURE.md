@@ -1,9 +1,11 @@
-# Elo de vie — Architecture (MVP)
+# BEYND — Architecture (MVP)
+
+L'app s'appelle **BEYND** (titre, manifeste PWA, écrans). « Elo de vie » est le nom du score global : la moyenne des Elo de catégorie.
 
 > Cadre technique du MVP solo. Produit : voir [`BRIEF.md`](BRIEF.md) (fait office de PRD).
 > Décisions validées le 2026-10-16. L'ancienne version fitness est dans [`archive/`](archive/).
 
-## 1. Stack (reprise de BEYND)
+## 1. Stack (reprise de la version fitness)
 
 | Couche | Choix | Statut |
 |---|---|---|
@@ -14,6 +16,12 @@
 | LLM | Gemini `gemini-3.8-flash` (surchargeable via `GEMINI_MODEL`), structured output par function calling, mode mock sans clé | Repris, nouveau schéma de sortie. `gemini-2.5-flash` renvoie 404 aux nouvelles clés. |
 
 La clé `GEMINI_API_KEY` reste dans `server/.env` (ignoré par git). Elle n'est jamais envoyée au client.
+
+**Mot de passe (`server/auth.js`)** : si `APP_PASSWORD` est défini, toutes les routes `/api` demandent une session, sauf `/api/health`, `/api/session`, `/api/login` et `/api/logout`. Sans `APP_PASSWORD`, l'API reste ouverte (dev local).
+- Session = cookie `beynd_session` `HttpOnly`, `SameSite=Lax`, `Secure` derrière HTTPS (`X-Forwarded-Proto`), valable 30 jours. Il contient `<expiration>.<HMAC>` : rien n'est stocké côté serveur.
+- Le secret HMAC est `SESSION_SECRET`, ou à défaut il est dérivé du mot de passe : changer le mot de passe déconnecte tous les appareils.
+- Comparaisons en temps constant. 10 échecs par client (dernier saut de `X-Forwarded-For`) ou 50 au total en 15 min → 429.
+- Le client affiche l'écran de connexion dès qu'une route répond 401.
 
 ## 2. Modèle de données
 
@@ -172,6 +180,10 @@ Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 
 
 | Méthode | Route | Rôle |
 |---|---|---|
+| GET | `/api/health` | Public. `{ ok: true }` (healthcheck Docker/Coolify) |
+| GET | `/api/session` | Public. `{ required, authenticated }` |
+| POST | `/api/login` | Public. `{ password }` → cookie de session ; 401 si faux, 429 si trop d'essais |
+| POST | `/api/logout` | Efface le cookie |
 | GET | `/api/state` | Accueil : profil (XP, niveau, série), Elo de vie + courbe, Elo par catégorie, Quête du jour, objectif principal |
 | POST | `/api/goals/analyze` | `{ prompt }` → proposition du coach (rien n'est persisté) |
 | POST | `/api/goals` | Proposition éventuellement modifiée par l'utilisateur → création en transaction |
@@ -194,12 +206,16 @@ Précisions d'implémentation :
 - Codes d'erreur : 400 (saisie invalide), 404 (introuvable), 409 (conflit, par exemple cocher une tâche d'un objectif archivé), 502 (coach indisponible).
 - « Aujourd'hui » = journée de jeu, en heure locale du serveur. Elle commence à `DAY_START_HOUR` (4 h par défaut) : une coche à 1 h compte pour la veille. Ça vaut pour `done_on`, la série, l'historique et les courbes.
 - Archiver l'objectif principal fait passer le rôle d'objectif principal à l'objectif restant le plus ancien.
+- `index.js` sert aussi le client construit (`client/dist`, ou `CLIENT_DIST`) quand il existe : un seul processus en production, même origine, donc pas de CORS. Les fichiers de `assets/` sont en cache `immutable`, le reste en `no-cache` ; toute URL hors `/api` renvoie `index.html`.
 - `ELO_DB_PATH` permet d'utiliser une base jetable. `npm run mock` démarre le serveur sans charger `.env`, donc sans Gemini.
 - **Démo** : `npm run demo:xp` (dans `server/`) ajoute l'XP qui manque pour arriver à 5 XP du niveau suivant ; la prochaine coche déclenche donc la célébration de niveau. `npm run demo:xp -- 1500` donne un montant exact. C'est une ligne `task` du journal sans `task_id` et à Δ Elo nul : aucune décoche ne l'annule. Il faut au moins un objectif.
 
 ## 6. Front
 
 - Onglets du bas : **Accueil · Objectifs · Progrès · Profil**.
+- **Profil** : avatar, niveau, XP total, Elo de vie, série et record, objectifs en cours, boss vaincus (projets et routines), jours d'activité ; réglages : mode du coach, déconnexion si un mot de passe est actif. Logique pure dans `client/src/lib/profile.js`, testée.
+- **Icônes PWA** : l'aventurier pixel sur fond sombre, générées sans dépendance par `npm run icons` (`client/scripts/icons.mjs`) dans `client/public/` (192, 512, maskable, apple-touch, favicon SVG).
+- **Démo sur le Wi-Fi** : `npm run lan` dans `client/` (Vite avec `--host`). Le téléphone ouvre `http://<IP du PC>:5173`. En HTTP sur IP locale, le service worker ne s'installe pas (contexte non sécurisé) : l'app marche, mais ne s'installe pas comme appli.
 - Thème `elo` : palette du brief (§8), polices Archivo et Silkscreen. Silkscreen est réservée aux labels pixel (niveau, XP, badges). Le thème est défini dans `design-system/tokens/theme-elo.css` et appliqué par `data-theme="elo"` sur `<html>`.
   - Paliers : Facile en vert, Moyen en bleu, Dur en or, Élite en rose. Le brief ne donne pas de couleur pour « Dur ».
   - Couleurs de catégorie : Tech bleu, Langues rose, Sport vert, Carrière or, Créatif orange, Autre gris chaud. Elles servent pour les tracés et les pastilles, jamais pour le texte.
@@ -257,8 +273,9 @@ Précisions d'implémentation :
 | É7 | Accueil | Cocher une tâche met tout à jour |
 | É8 | Objectifs + Progrès | MVP complet ✔ |
 | É9 | Routines : schéma + migration, moteur, coach, API, puis front (création, quête, détail) | Lecture et callisthénie jouables de bout en bout ✔ |
-| É10 | Finitions, nettoyage du code fitness, README, manifeste PWA | Prêt pour la démo |
+| É10 | Nom BEYND, mot de passe, Profil, icônes PWA, démo sur le Wi-Fi, README | Prêt pour la démo ✔ |
+| É11 | Dockerfile + déploiement Coolify (HTTPS) | En ligne sur le VPS |
 
 ## 8. Post-MVP (ne pas builder maintenant)
 
-Baisse d'Elo par inactivité, raids du dimanche, collection de monstres, recalibrage communautaire, auth et multi-user (→ Postgres).
+Baisse d'Elo par inactivité, raids du dimanche, collection de monstres, recalibrage communautaire, comptes et multi-user (→ Postgres). Le mot de passe unique d'É10 n'est qu'un verrou.

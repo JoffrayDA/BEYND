@@ -1,4 +1,6 @@
-# Brief produit — App « Elo de vie » (nom provisoire)
+# Brief produit — BEYND
+
+> L'app s'appelle **BEYND**. « Elo de vie » est le nom du score global (§ tableau des scores).
 
 ## 1. Vision
 Une app pour se dépasser : on pose ses objectifs de vie, on les découpe en tâches, on coche, et on voit sa progression. Pas de cours : le contenu vient d'ailleurs (TryHackMe, appli de langue, salle de sport…). L'app est la couche **motivation + suivi + coaching**.

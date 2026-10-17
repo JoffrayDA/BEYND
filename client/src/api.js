@@ -1,3 +1,5 @@
+export const AUTH_EVENT = 'beynd:auth-required';
+
 async function req(path, opts = {}) {
   const res = await fetch(`/api${path}`, {
     headers: { 'content-type': 'application/json' },
@@ -6,6 +8,8 @@ async function req(path, opts = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    // Session missing or expired: the app swaps to the login screen.
+    if (res.status === 401 && path !== '/login') window.dispatchEvent(new Event(AUTH_EVENT));
     const err = new Error(data.error || `${path} → ${res.status}`);
     err.status = res.status;
     throw err;
@@ -14,6 +18,9 @@ async function req(path, opts = {}) {
 }
 
 export const api = {
+  session: () => req('/session'),
+  login: (password) => req('/login', { method: 'POST', body: { password } }),
+  logout: () => req('/logout', { method: 'POST' }),
   state: () => req('/state'),
   progress: () => req('/progress'),
   analyzeGoal: (prompt) => req('/goals/analyze', { method: 'POST', body: { prompt } }),

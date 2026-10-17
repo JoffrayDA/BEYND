@@ -10,7 +10,7 @@ export const COACH_NAME = 'Coach';
 const categoryList = CATEGORIES.map((c) => `${c.id} (${c.name})`).join(', ');
 
 export const SYSTEM_PROMPT = `
-Tu es le coach de "Elo de vie", une app où l'on se fixe des objectifs de vie,
+Tu es le coach de "BEYND", une app où l'on se fixe des objectifs de vie,
 découpés en étapes et en tâches à cocher. Chaque catégorie a son propre Elo,
 comme aux échecs. L'app ne fournit aucun contenu : les tâches renvoient à des
 ressources externes (TryHackMe, appli de langue, salle de sport, livres…).

@@ -2,7 +2,8 @@
 // mock coach and a pinned clock. See docs/ARCHITECTURE.md §5.
 
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
+import { serveStatic } from '@hono/node-server/serve-static';
+import { createAuth } from './auth.js';
 import { analyzeGoal, validatePlan, CoachError, HAS_KEY } from './llm.js';
 import {
   NotFound, Conflict, homeState, progressState, listGoals, goalDetail,
@@ -13,9 +14,16 @@ import { gain, tier, taskXp } from './engine.js';
 
 const MAX_PROMPT = 500;
 
-export function createApp({ db, analyze = analyzeGoal, clock = () => new Date(), hasKey = HAS_KEY }) {
+// `password` turns the login gate on (see auth.js). `clientDir` serves the
+// built PWA from the same origin, as in production (Docker).
+export function createApp({
+  db, analyze = analyzeGoal, clock = () => new Date(), hasKey = HAS_KEY,
+  password = process.env.APP_PASSWORD, sessionSecret = process.env.SESSION_SECRET, clientDir = null,
+}) {
   const app = new Hono();
-  app.use('/api/*', cors());
+  const auth = createAuth({ password, secret: sessionSecret, clock });
+  app.use('/api/*', auth.middleware);
+  auth.routes(app);
 
   const body = (c) => c.req.json().catch(() => ({}));
   const idParam = (c) => {
@@ -24,7 +32,7 @@ export function createApp({ db, analyze = analyzeGoal, clock = () => new Date(),
     return id;
   };
 
-  app.get('/api/state', (c) => c.json({ hasKey, ...homeState(db, clock()) }));
+  app.get('/api/state', (c) => c.json({ hasKey, auth: auth.enabled, ...homeState(db, clock()) }));
 
   app.get('/api/progress', (c) => c.json(progressState(db, clock())));
 
@@ -104,6 +112,19 @@ export function createApp({ db, analyze = analyzeGoal, clock = () => new Date(),
     const goal = levelUpRoutine(db, idParam(c), await body(c), { now });
     return c.json({ goal, state: homeState(db, now) });
   });
+
+  app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
+
+  if (clientDir) {
+    // Hashed bundles are immutable; index.html and the service worker must
+    // be revalidated so a deploy reaches the phones.
+    app.use('/*', async (c, next) => {
+      await next();
+      if (c.res.ok) c.res.headers.set('cache-control', c.req.path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+    });
+    app.use('/*', serveStatic({ root: clientDir }));
+    app.get('/*', serveStatic({ root: clientDir, path: 'index.html' }));   // SPA fallback
+  }
 
   app.onError((err, c) => {
     if (err instanceof NotFound) return c.json({ error: err.message }, 404);

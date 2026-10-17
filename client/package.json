@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "lan": "vite --host --port 5173 --strictPort",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test \"src/**/*.test.js\""
+    "test": "node --test \"src/**/*.test.js\"",
+    "icons": "node scripts/icons.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

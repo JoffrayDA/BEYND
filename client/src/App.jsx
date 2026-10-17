@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { api } from './api.js';
+import { api, AUTH_EVENT } from './api.js';
 import { Home } from './screens/Home.jsx';
-import { Placeholder } from './screens/Screen.jsx';
 import { Goals } from './screens/Goals.jsx';
 import { Progress } from './screens/Progress.jsx';
+import { Profile } from './screens/Profile.jsx';
+import { Login } from './screens/Login.jsx';
+import { Wordmark } from './components/Wordmark.jsx';
 import { PixelIcon } from './components/PixelIcon.jsx';
 import { Button } from './ds.js';
 
@@ -17,6 +19,7 @@ const TABS = [
 export function App() {
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
+  const [locked, setLocked] = useState(false);          // server wants a password
   const [tab, setTab] = useState('home');
   // Another tab can send the Goals tab straight to creation or to one goal.
   const [goalsIntent, setGoalsIntent] = useState({});
@@ -27,23 +30,34 @@ export function App() {
       const s = await api.state();
       setState(s);
       setError(null);
+      setLocked(false);
       return s;
     } catch (err) {
-      setError(err);
+      if (err.status !== 401) setError(err);
       return null;
     }
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Any 401 (no session yet, or it expired) shows the login screen.
+  useEffect(() => {
+    const onAuth = () => setLocked(true);
+    window.addEventListener(AUTH_EVENT, onAuth);
+    return () => window.removeEventListener(AUTH_EVENT, onAuth);
+  }, []);
+
+  if (locked) return <Login onDone={refresh} />;
+
   if (!state) {
     return (
       <div className="app-frame" style={{ padding: 24, gap: 12 }}>
+        <Wordmark />
         {error ? (
           <>
             <p style={{ margin: 0 }}>Serveur injoignable.</p>
             <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-              Lance <code>npm run dev</code> dans <code>server/</code>, puis réessaie.
+              Lance <code>npm start</code> dans <code>server/</code>, puis réessaie.
             </p>
             <div><Button onClick={refresh}>Réessayer</Button></div>
           </>
@@ -60,7 +74,7 @@ export function App() {
         {tab === 'home' && <Home state={state} setState={setState} onNewGoal={() => go('goals', { create: true })} onOpenGoal={(id) => go('goals', { open: id })} />}
         {tab === 'goals' && <Goals key={JSON.stringify(goalsIntent)} state={state} setState={setState} refresh={refresh} intent={goalsIntent} />}
         {tab === 'progress' && <Progress />}
-        {tab === 'profile' && <Placeholder title="Profil" step="É9">Ton personnage et tes réglages.</Placeholder>}
+        {tab === 'profile' && <Profile state={state} onLogout={() => { setState(null); setLocked(true); setTab('home'); }} />}
       </main>
       <nav className="tabbar" aria-label="Navigation principale">
         {TABS.map(([id, label]) => (
