@@ -1,58 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { api } from '../api.js';
+import React from 'react';
 import { Button, Card } from '../ds.js';
 import { LineChart } from '../components/LineChart.jsx';
-import { Meter, PixelLabel } from '../components/Stats.jsx';
+import { Delta, Meter, PixelLabel } from '../components/Stats.jsx';
 import { CategoryTag, TierBadge } from '../components/Badges.jsx';
 import { Avatar, Flame } from '../components/Avatar.jsx';
-import { Celebration, Toast } from '../components/Celebration.jsx';
-import { celebrationFor, fmtElo, fmtGain } from '../lib/home.js';
+import { fmtElo, fmtGain } from '../lib/home.js';
+import { withStart } from '../lib/progress.js';
+import { useTaskToggle } from '../components/useTaskToggle.jsx';
 
-// Every Elo starts at 1000: anchor the curve the day before the first point,
-// so even a first day of play draws a line rather than a lone dot.
-export function withStart(points, start = 1000) {
-  if (points.length === 0) return points;
-  const d = new Date(`${points[0].date}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
-  return [{ date: d.toISOString().slice(0, 10), value: start }, ...points];
-}
-
-export function Home({ state, setState, onNewGoal, onOpenGoals }) {
+export function Home({ state, setState, onNewGoal, onOpenGoal }) {
   const { user, life_elo: life, main_goal: main, quest } = state;
   const active = state.categories.filter((c) => c.active);
-  const [busy, setBusy] = useState(null);
-  const [celebration, setCelebration] = useState(null);
-  const [toast, setToast] = useState(null);
-  const [error, setError] = useState(null);
-  const toastTimer = useRef(null);
-
-  useEffect(() => () => clearTimeout(toastTimer.current), []);
-
-  async function toggle(item) {
-    if (busy) return;
-    setBusy(item.task_id);
-    setError(null);
-    try {
-      const r = await api.toggleTask(item.task_id);
-      const c = celebrationFor({
-        events: r.events, before: user, after: r.state.user,
-        goalTitle: item.goal_title, stepTitle: item.step_title,
-      });
-      setState((s) => ({ ...s, ...r.state }));
-      if (c.kind === 'toast') {
-        setToast(c);
-        clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToast(null), 2200);
-      } else {
-        setToast(null);
-        setCelebration(c);
-      }
-    } catch {
-      setError('La tâche n’a pas pu être mise à jour. Réessaie.');
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { toggle, busy, error, overlay } = useTaskToggle({ user, setState });
 
   return (
     <div className="screen">
@@ -119,7 +78,7 @@ export function Home({ state, setState, onNewGoal, onOpenGoals }) {
               <ul className="quest">
                 {quest.map((q) => (
                   <li key={q.task_id}>
-                    <button className="quest-item" aria-pressed={q.done} disabled={busy != null} onClick={() => toggle(q)}>
+                    <button className="quest-item" aria-pressed={q.done} disabled={busy != null} onClick={() => toggle(q.task_id, { goalTitle: q.goal_title, stepTitle: q.step_title })}>
                       <span aria-hidden className={`check${q.done ? ' on' : ''}`}>{busy === q.task_id ? '…' : q.done ? '✓' : ''}</span>
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <span className="quest-label" style={q.done ? { textDecoration: 'line-through', color: 'var(--color-text-muted)' } : undefined}>{q.label}</span>
@@ -161,7 +120,7 @@ export function Home({ state, setState, onNewGoal, onOpenGoals }) {
           {/* Main goal = the boss */}
           <section>
             <h2 style={{ margin: '0 0 8px', fontSize: 'var(--text-lg)' }}>Objectif principal</h2>
-            <button className="card-button" onClick={onOpenGoals}>
+            <button className="card-button" onClick={() => onOpenGoal(main.id)}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <CategoryTag id={main.category_id} name={main.category_name} muted />
                 <TierBadge tier={main.tier} difficulty={main.difficulty} />
@@ -184,21 +143,7 @@ export function Home({ state, setState, onNewGoal, onOpenGoals }) {
         </>
       )}
 
-      {toast && <Toast c={toast} />}
-      {celebration && <Celebration c={celebration} onClose={() => setCelebration(null)} />}
+      {overlay}
     </div>
-  );
-}
-
-// Signed daily change. Direction is carried by the arrow and the sign, not
-// colour alone.
-function Delta({ value, suffix, small = false }) {
-  const flat = Math.abs(value) < 0.05;
-  const color = flat ? 'var(--color-text-subtle)' : value > 0 ? 'var(--color-up)' : 'var(--color-down)';
-  return (
-    <span style={{ color, fontWeight: 700, fontSize: small ? 'var(--text-xs)' : 'var(--text-sm)', whiteSpace: 'nowrap' }}>
-      {flat ? '—' : `${value > 0 ? '▲' : '▼'} ${fmtGain(value)}`}
-      {suffix && !flat && <span style={{ color: 'var(--color-text-muted)', fontWeight: 500 }}> {suffix}</span>}
-    </span>
   );
 }

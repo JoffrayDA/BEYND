@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { Home } from './screens/Home.jsx';
 import { Placeholder } from './screens/Screen.jsx';
 import { Goals } from './screens/Goals.jsx';
+import { Progress } from './screens/Progress.jsx';
 import { PixelIcon } from './components/PixelIcon.jsx';
 import { Button } from './ds.js';
 
@@ -17,9 +18,9 @@ export function App() {
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('home');
-  // Home's empty state opens the creation flow directly on the Goals tab.
-  const [createOnOpen, setCreateOnOpen] = useState(false);
-  const go = (id, create = false) => { setCreateOnOpen(create); setTab(id); };
+  // Another tab can send the Goals tab straight to creation or to one goal.
+  const [goalsIntent, setGoalsIntent] = useState({});
+  const go = (id, intent = {}) => { setGoalsIntent(intent); setTab(id); };
 
   const refresh = useCallback(async () => {
     try {
@@ -56,9 +57,9 @@ export function App() {
   return (
     <div className="app-frame">
       <main style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {tab === 'home' && <Home state={state} setState={setState} onNewGoal={() => go('goals', true)} onOpenGoals={() => go('goals')} />}
-        {tab === 'goals' && <Goals state={state} refresh={refresh} startCreating={createOnOpen} />}
-        {tab === 'progress' && <Placeholder title="Progrès" step="É8">Une courbe d'Elo par catégorie, l'historique et tes séries.</Placeholder>}
+        {tab === 'home' && <Home state={state} setState={setState} onNewGoal={() => go('goals', { create: true })} onOpenGoal={(id) => go('goals', { open: id })} />}
+        {tab === 'goals' && <Goals key={JSON.stringify(goalsIntent)} state={state} setState={setState} refresh={refresh} intent={goalsIntent} />}
+        {tab === 'progress' && <Progress />}
         {tab === 'profile' && <Placeholder title="Profil" step="É9">Ton personnage et tes réglages.</Placeholder>}
       </main>
       <nav className="tabbar" aria-label="Navigation principale">

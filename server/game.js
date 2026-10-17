@@ -264,6 +264,7 @@ export function progressState(db, now) {
 
   const dates = doneDates(db);
   return {
+    today,
     categories,
     history: [...days.values()].sort((a, b) => b.date.localeCompare(a.date)),
     streak: { current: streak(dates, today), best: bestStreak(dates) },

@@ -169,6 +169,15 @@ Précisions d'implémentation :
   - objectif principal, avec le gain du boss.
 - **Retours après une coche** : une coche simple ou une décoche affiche un toast (Elo, XP). Une étape terminée, un boss vaincu ou un niveau gagné ouvrent une célébration plein écran avec confettis pixel, désactivés si le système demande moins d'animations. La logique est dans `client/src/lib/home.js`, testée.
 - Sans objectif, l'Accueil propose « Créer un objectif », qui ouvre directement le parcours de création.
+- **Objectifs** :
+  - filtres par catégorie (puces « Tous » + catégories qui ont des objectifs, avec leur nombre) et puce « Archivés » ;
+  - chaque carte montre le palier, la difficulté, l'avancement, le gain d'une étape et celui du boss (×2) à l'Elo courant ;
+  - le détail d'un objectif liste toutes les étapes et tâches, cochables comme dans la Quête du jour (même toast, mêmes célébrations, via `useTaskToggle`). Les étapes franchies sont repliées. On peut renommer, définir comme principal, archiver ou réactiver ;
+  - la carte « Objectif principal » de l'Accueil ouvre directement son détail. Logique pure dans `client/src/lib/goals.js`, testée.
+- **Progrès** :
+  - séries (actuelle, meilleure, jours joués) et grille d'activité des 5 dernières semaines, lundi en premier ;
+  - une courbe d'Elo par catégorie ayant un objectif ou de l'activité, chacune avec sa variation depuis 1000 ;
+  - historique jour par jour (Δ Elo net, XP, tâches encore cochées), 10 jours à la fois. `/api/progress` renvoie aussi `today`. Logique pure dans `client/src/lib/progress.js`, testée.
 - - Retiré : Chat, Onboarding, Settings fitness, mesures de poids, `coaches.js` multi-personas.
 
 ## 7. Ordre de build
@@ -183,7 +192,7 @@ Précisions d'implémentation :
 | É5 | Fondations front (thème, onglets, `LineChart`) | Coquille navigable |
 | É6 | Création d'objectif | Cas pentester créé de bout en bout |
 | É7 | Accueil | Cocher une tâche met tout à jour |
-| É8 | Objectifs + Progrès | MVP complet |
+| É8 | Objectifs + Progrès | MVP complet ✔ |
 | É9 | Finitions, nettoyage du code fitness, README, manifeste PWA | Prêt pour la démo |
 
 ## 8. Post-MVP (ne pas builder maintenant)

@@ -194,6 +194,7 @@ test('streak and progress history across days', async () => {
   await api.post(`/api/tasks/${t3.id}/toggle`);
 
   const p = (await api.get('/api/progress')).body;
+  assert.equal(p.today, '2026-10-17');
   assert.deepEqual(p.streak, { current: 3, best: 3 });
   assert.deepEqual(p.history.map((d) => d.date), ['2026-10-17', '2026-10-16', '2026-10-15']);
   assert.equal(p.history[2].elo_delta, 21);

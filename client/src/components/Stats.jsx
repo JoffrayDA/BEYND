@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card } from '../ds.js';
+import { fmtGain } from '../lib/home.js';
 
 // Small uppercase pixel label (level, XP, badges, section kickers).
 export function PixelLabel({ children, color = 'var(--color-text-muted)', style = {} }) {
@@ -38,5 +39,18 @@ export function Meter({ pct, color = 'var(--color-primary)', height = 8, label }
     >
       <div style={{ width: `${v}%`, height: '100%', background: color, transition: 'width var(--duration-slow) var(--ease-out)' }} />
     </div>
+  );
+}
+
+// Signed daily change. Direction is carried by the arrow and the sign, not
+// colour alone.
+export function Delta({ value, suffix, small = false }) {
+  const flat = Math.abs(value) < 0.05;
+  const color = flat ? 'var(--color-text-subtle)' : value > 0 ? 'var(--color-up)' : 'var(--color-down)';
+  return (
+    <span style={{ color, fontWeight: 700, fontSize: small ? 'var(--text-xs)' : 'var(--text-sm)', whiteSpace: 'nowrap' }}>
+      {flat ? '—' : `${value > 0 ? '▲' : '▼'} ${fmtGain(value)}`}
+      {suffix && !flat && <span style={{ color: 'var(--color-text-muted)', fontWeight: 500 }}> {suffix}</span>}
+    </span>
   );
 }
