@@ -1,17 +1,19 @@
 import React, { useMemo, useRef, useState } from 'react';
 
-// Single-series weight-over-time line chart, inline SVG (no chart lib).
+// Single-series line chart over time, inline SVG (no chart lib).
 // One series => no legend box: the title above the chart names what is plotted.
-// The series colour is the active coach's --color-primary, so the chart rethemes
-// with the rest of the app (including the dark data-nerd theme).
+// Several categories are shown as small multiples (one chart each), never as
+// overlaid lines — categories are not compared with each other.
+//
+// points: [{ date: 'YYYY-MM-DD', value: number }], sorted by date.
+// reference: optional { value, label } horizontal line (e.g. the 1000 start).
 
 const W = 320;
-const H = 168;
-const PAD = { top: 12, right: 40, bottom: 22, left: 34 };
+const PAD = { top: 12, right: 44, bottom: 22, left: 36 };
 const PLOT_W = W - PAD.left - PAD.right;
-const PLOT_H = H - PAD.top - PAD.bottom;
 
 const fmtDay = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+const defaultFormat = (v) => String(Math.round(v));
 
 // Axis ticks on clean numbers rather than raw data bounds.
 function niceTicks(min, max, count = 4) {
@@ -25,19 +27,29 @@ function niceTicks(min, max, count = 4) {
   return ticks;
 }
 
-export function WeightChart({ measurements = [], cible = null }) {
+export function LineChart({
+  points = [],
+  label,
+  color = 'var(--color-primary)',
+  format = defaultFormat,
+  reference = null,
+  height = 168,
+  emptyText = 'Pas encore de données.',
+}) {
   const [hover, setHover] = useState(null);
   const [table, setTable] = useState(false);
   const svgRef = useRef(null);
+  const PLOT_H = height - PAD.top - PAD.bottom;
 
   const geo = useMemo(() => {
-    if (measurements.length === 0) return null;
-    const xs = measurements.map((m) => Date.parse(m.date));
-    const ys = measurements.map((m) => m.poids);
-    const values = cible != null ? [...ys, cible] : ys;
+    if (points.length === 0) return null;
+    const xs = points.map((p) => Date.parse(p.date));
+    const ys = points.map((p) => p.value);
+    const values = reference ? [...ys, reference.value] : ys;
     const lo = Math.min(...values);
     const hi = Math.max(...values);
-    const ticks = niceTicks(lo - 0.5, hi + 0.5);
+    const pad = Math.max(1, (hi - lo) * 0.1);
+    const ticks = niceTicks(lo - pad, hi + pad);
     const yMin = Math.min(ticks[0], lo);
     const yMax = Math.max(ticks.at(-1), hi);
     const xMin = Math.min(...xs);
@@ -45,16 +57,12 @@ export function WeightChart({ measurements = [], cible = null }) {
 
     const x = (t) => (xMax === xMin ? PAD.left + PLOT_W : PAD.left + ((t - xMin) / (xMax - xMin)) * PLOT_W);
     const y = (v) => PAD.top + PLOT_H - ((v - yMin) / (yMax - yMin || 1)) * PLOT_H;
-    const pts = measurements.map((m, i) => ({ ...m, cx: x(xs[i]), cy: y(m.poids) }));
-    return { pts, ticks, x, y, yMin, yMax };
-  }, [measurements, cible]);
+    const pts = points.map((p, i) => ({ ...p, cx: x(xs[i]), cy: y(p.value) }));
+    return { pts, ticks, y, yMin, yMax };
+  }, [points, reference, PLOT_H]);
 
   if (!geo) {
-    return (
-      <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', margin: 0 }}>
-        Pas encore de pesée — logge ton poids pour voir la courbe.
-      </p>
-    );
+    return <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', margin: 0 }}>{emptyText}</p>;
   }
 
   const { pts, ticks, y } = geo;
@@ -79,10 +87,10 @@ export function WeightChart({ measurements = [], cible = null }) {
       <div style={{ position: 'relative' }}>
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${W} ${H}`}
+          viewBox={`0 0 ${W} ${height}`}
           width="100%"
           role="img"
-          aria-label="Évolution du poids dans le temps"
+          aria-label={`${label} dans le temps`}
           style={{ display: 'block', touchAction: 'pan-y' }}
           onPointerMove={onMove}
           onPointerDown={onMove}
@@ -90,64 +98,53 @@ export function WeightChart({ measurements = [], cible = null }) {
         >
           {ticks.map((t) => (
             <g key={t}>
-              <line
-                x1={PAD.left} x2={W - PAD.right} y1={y(t)} y2={y(t)}
-                stroke="var(--color-border)" strokeWidth="1"
-              />
+              <line x1={PAD.left} x2={W - PAD.right} y1={y(t)} y2={y(t)} stroke="var(--color-border)" strokeWidth="1" />
               <text
-                x={PAD.left - 6} y={y(t) + 3} textAnchor="end"
-                fontSize="9" fill="var(--color-text-muted)"
+                x={PAD.left - 6} y={y(t) + 3} textAnchor="end" fontSize="9" fill="var(--color-text-muted)"
                 style={{ fontVariantNumeric: 'tabular-nums' }}
               >
-                {t}
+                {format(t)}
               </text>
             </g>
           ))}
 
-          {/* Target weight: a reference line, not a series — muted ink, labelled. */}
-          {cible != null && cible >= geo.yMin && cible <= geo.yMax && (
+          {/* Reference value: a line, not a series — muted ink, labelled. */}
+          {reference && reference.value >= geo.yMin && reference.value <= geo.yMax && (
             <g>
               <line
-                x1={PAD.left} x2={W - PAD.right} y1={y(cible)} y2={y(cible)}
-                stroke="var(--color-text-muted)" strokeWidth="1"
+                x1={PAD.left} x2={W - PAD.right} y1={y(reference.value)} y2={y(reference.value)}
+                stroke="var(--color-text-subtle, var(--color-text-muted))" strokeWidth="1"
               />
-              <text x={W - PAD.right + 4} y={y(cible) + 3} fontSize="9" fill="var(--color-text-muted)">
-                cible
+              <text x={W - PAD.right + 4} y={y(reference.value) + 3} fontSize="9" fill="var(--color-text-muted)">
+                {reference.label}
               </text>
             </g>
           )}
 
-          <path d={area} fill="var(--color-primary)" opacity="0.1" />
-          <path
-            d={path} fill="none" stroke="var(--color-primary)"
-            strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"
-          />
+          <path d={area} fill={color} opacity="0.1" />
+          <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
 
           {active && (
-            <line
-              x1={active.cx} x2={active.cx} y1={PAD.top} y2={PAD.top + PLOT_H}
-              stroke="var(--color-text-muted)" strokeWidth="1"
-            />
+            <line x1={active.cx} x2={active.cx} y1={PAD.top} y2={PAD.top + PLOT_H} stroke="var(--color-text-muted)" strokeWidth="1" />
           )}
 
           {/* End marker + the one direct label; the axis carries the rest. */}
-          <circle cx={last.cx} cy={last.cy} r="4.5" fill="var(--color-primary)"
-            stroke="var(--color-surface)" strokeWidth="2" />
+          <circle cx={last.cx} cy={last.cy} r="4.5" fill={color} stroke="var(--color-surface)" strokeWidth="2" />
+          {/* Above the dot, unless the dot sits at the top edge: then below it. */}
           <text
-            x={Math.min(last.cx + 8, W - PAD.right + 2)} y={last.cy - 8}
+            x={Math.min(last.cx + 8, W - PAD.right + 2)} y={last.cy < PAD.top + 12 ? last.cy + 16 : last.cy - 8}
             fontSize="10" fontWeight="700" fill="var(--color-text)"
           >
-            {last.poids} kg
+            {format(last.value)}
           </text>
 
           {active && active !== last && (
-            <circle cx={active.cx} cy={active.cy} r="4.5" fill="var(--color-primary)"
-              stroke="var(--color-surface)" strokeWidth="2" />
+            <circle cx={active.cx} cy={active.cy} r="4.5" fill={color} stroke="var(--color-surface)" strokeWidth="2" />
           )}
 
-          <text x={PAD.left} y={H - 6} fontSize="9" fill="var(--color-text-muted)">{fmtDay(pts[0].date)}</text>
+          <text x={PAD.left} y={height - 6} fontSize="9" fill="var(--color-text-muted)">{fmtDay(pts[0].date)}</text>
           {pts.length > 1 && (
-            <text x={W - PAD.right} y={H - 6} textAnchor="end" fontSize="9" fill="var(--color-text-muted)">
+            <text x={W - PAD.right} y={height - 6} textAnchor="end" fontSize="9" fill="var(--color-text-muted)">
               {fmtDay(last.date)}
             </text>
           )}
@@ -159,12 +156,12 @@ export function WeightChart({ measurements = [], cible = null }) {
               position: 'absolute', top: 0, pointerEvents: 'none',
               left: `${(active.cx / W) * 100}%`,
               transform: `translateX(${active.cx > W / 2 ? '-105%' : '5%'})`,
-              background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-sm, 6px)', padding: '4px 8px',
+              background: 'var(--color-surface-raised)', border: '1px solid var(--color-border-strong)',
+              borderRadius: 'var(--radius-sm)', padding: '4px 8px',
               fontSize: 'var(--text-xs)', whiteSpace: 'nowrap',
             }}
           >
-            <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{active.poids} kg</strong>
+            <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{format(active.value)}</strong>
             <span style={{ color: 'var(--color-text-muted)' }}> · {fmtDay(active.date)}</span>
           </div>
         )}
@@ -186,14 +183,14 @@ export function WeightChart({ measurements = [], cible = null }) {
           <thead>
             <tr style={{ color: 'var(--color-text-muted)', textAlign: 'left' }}>
               <th style={{ fontWeight: 600, padding: '4px 0' }}>Date</th>
-              <th style={{ fontWeight: 600, padding: '4px 0', textAlign: 'right' }}>Poids</th>
+              <th style={{ fontWeight: 600, padding: '4px 0', textAlign: 'right' }}>{label}</th>
             </tr>
           </thead>
           <tbody>
             {[...pts].reverse().map((p, i) => (
               <tr key={`${p.date}-${i}`} style={{ borderTop: '1px solid var(--color-border)' }}>
                 <td style={{ padding: '4px 0' }}>{p.date}</td>
-                <td style={{ padding: '4px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.poids} kg</td>
+                <td style={{ padding: '4px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{format(p.value)}</td>
               </tr>
             ))}
           </tbody>

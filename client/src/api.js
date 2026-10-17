@@ -4,20 +4,28 @@ async function req(path, opts = {}) {
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `${path} → ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
 }
 
 export const api = {
   state: () => req('/state'),
-  onboardingStart: (coachId) => req('/onboarding/start', { method: 'POST', body: { coachId } }),
-  onboardingMessage: (text) => req('/onboarding/message', { method: 'POST', body: { text } }),
-  onboardingComplete: (profile) => req('/onboarding/complete', { method: 'POST', body: profile }),
-  chat: (text) => req('/chat', { method: 'POST', body: { text } }),
-  switchCoach: (coachId) => req('/project/coach', { method: 'POST', body: { coachId } }),
-  addMeasurement: (poids) => req('/measurement', { method: 'POST', body: { poids } }),
-  toggleEngagement: (id) => req(`/engagement/${id}/toggle`, { method: 'POST' }),
-  history: () => req('/history'),
-  saveProfile: (patch) => req('/profile', { method: 'POST', body: patch }),
-  checkin: () => req('/checkin', { method: 'POST' }),
+  progress: () => req('/progress'),
+  analyzeGoal: (prompt) => req('/goals/analyze', { method: 'POST', body: { prompt } }),
+  createGoal: (analysis) => req('/goals', { method: 'POST', body: analysis }),
+  goals: ({ category, archived } = {}) => {
+    const q = new URLSearchParams();
+    if (category) q.set('category', category);
+    if (archived) q.set('archived', '1');
+    const s = q.toString();
+    return req(`/goals${s ? `?${s}` : ''}`);
+  },
+  goal: (id) => req(`/goals/${id}`),
+  updateGoal: (id, patch) => req(`/goals/${id}`, { method: 'PATCH', body: patch }),
+  toggleTask: (id) => req(`/tasks/${id}/toggle`, { method: 'POST' }),
 };

@@ -1,76 +1,68 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { api } from './api.js';
-import { Onboarding } from './screens/Onboarding.jsx';
-import { Chat } from './screens/Chat.jsx';
-import { Log } from './screens/Log.jsx';
-import { Dashboard } from './screens/Dashboard.jsx';
-import { History } from './screens/History.jsx';
-import { Settings } from './screens/Settings.jsx';
+import { Home } from './screens/Home.jsx';
+import { Placeholder } from './screens/Screen.jsx';
+import { PixelIcon } from './components/PixelIcon.jsx';
+import { Button } from './ds.js';
 
 const TABS = [
-  ['chat', 'Chat'],
-  ['log', 'Log'],
-  ['stats', 'Stats'],
-  ['histo', 'Historique'],
-  ['reglages', 'Réglages'],
+  ['home', 'Accueil'],
+  ['goals', 'Objectifs'],
+  ['progress', 'Progrès'],
+  ['profile', 'Profil'],
 ];
-
-// coach_id already matches the design-system theme id (cool-jeune | pote-cash | data-nerd)
-function applyTheme(coachId) {
-  document.documentElement.dataset.theme = coachId || 'cool-jeune';
-}
 
 export function App() {
   const [state, setState] = useState(null);
-  const [tab, setTab] = useState('chat');
-  const checkinDone = useRef(false);
+  const [error, setError] = useState(null);
+  const [tab, setTab] = useState('home');
 
   const refresh = useCallback(async () => {
-    const s = await api.state();
-    setState(s);
-    applyTheme(s.project?.coach_id);
-    return s;
+    try {
+      const s = await api.state();
+      setState(s);
+      setError(null);
+      return s;
+    } catch (err) {
+      setError(err);
+      return null;
+    }
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Opening check-in: if the server says one is due (no weigh-in for a while,
-  // or engagements lagging), let the coach open the chat. Once per app load.
-  useEffect(() => {
-    if (!state?.checkin?.raison || checkinDone.current) return;
-    checkinDone.current = true;
-    (async () => {
-      try {
-        const r = await api.checkin();
-        if (r.fired) { setTab('chat'); await refresh(); }
-      } catch { /* a failed check-in must never block the app */ }
-    })();
-  }, [state?.checkin?.raison, refresh]);
-
-  if (!state) return <div className="app-frame" style={{ padding: 24 }}>Chargement…</div>;
-
-  const active = state.project && state.project.statut === 'active';
-
-  if (!active) {
+  if (!state) {
     return (
-      <div className="app-frame">
-        <Onboarding state={state} onTheme={applyTheme} onDone={refresh} />
+      <div className="app-frame" style={{ padding: 24, gap: 12 }}>
+        {error ? (
+          <>
+            <p style={{ margin: 0 }}>Serveur injoignable.</p>
+            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+              Lance <code>npm run dev</code> dans <code>server/</code>, puis réessaie.
+            </p>
+            <div><Button onClick={refresh}>Réessayer</Button></div>
+          </>
+        ) : (
+          <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>Chargement…</p>
+        )}
       </div>
     );
   }
 
   return (
     <div className="app-frame">
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {tab === 'chat' && <Chat state={state} refresh={refresh} onTheme={applyTheme} />}
-        {tab === 'log' && <Log state={state} refresh={refresh} />}
-        {tab === 'stats' && <Dashboard state={state} />}
-        {tab === 'histo' && <History />}
-        {tab === 'reglages' && <Settings state={state} refresh={refresh} onTheme={applyTheme} />}
-      </div>
-      <nav className="tabbar">
+      <main style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {tab === 'home' && <Home state={state} refresh={refresh} />}
+        {tab === 'goals' && <Placeholder title="Objectifs" step="É6 et É8">Tes objectifs, filtrés par catégorie, avec difficulté et gain potentiel.</Placeholder>}
+        {tab === 'progress' && <Placeholder title="Progrès" step="É8">Une courbe d'Elo par catégorie, l'historique et tes séries.</Placeholder>}
+        {tab === 'profile' && <Placeholder title="Profil" step="É9">Ton personnage et tes réglages.</Placeholder>}
+      </main>
+      <nav className="tabbar" aria-label="Navigation principale">
         {TABS.map(([id, label]) => (
-          <button key={id} data-active={tab === id} onClick={() => setTab(id)}>{label}</button>
+          <button key={id} data-active={tab === id} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
+            <PixelIcon name={id} />
+            <span>{label}</span>
+          </button>
         ))}
       </nav>
     </div>

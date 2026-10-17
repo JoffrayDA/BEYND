@@ -10,11 +10,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'BEYND',
-        short_name: 'BEYND',
-        description: 'Coaching conversationnel',
-        theme_color: '#0B0D12',
-        background_color: '#0B0D12',
+        name: 'Elo de vie',
+        short_name: 'Elo de vie',
+        description: 'Tes objectifs de vie, un Elo par catégorie',
+        theme_color: '#1C1B19',
+        background_color: '#1C1B19',
         display: 'standalone',
         start_url: '/',
         icons: [],

@@ -2,6 +2,7 @@
 @import url('tokens/colors.css');
 @import url('tokens/typography.css');
 @import url('tokens/spacing.css');
+@import url('tokens/theme-elo.css');
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
