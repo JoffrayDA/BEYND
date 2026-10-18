@@ -38,4 +38,7 @@ export const api = {
   toggleHabit: (id) => req(`/habits/${id}/toggle`, { method: 'POST' }),
   toggleMilestone: (id) => req(`/milestones/${id}/toggle`, { method: 'POST' }),
   levelUp: (goalId, body) => req(`/goals/${goalId}/level-up`, { method: 'POST', body }),
+  assault: () => req('/raid/assault', { method: 'POST' }),
+  raids: () => req('/raids'),
+  equip: (slot, item) => req('/gear', { method: 'POST', body: { slot, item } }),
 };

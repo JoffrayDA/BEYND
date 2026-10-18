@@ -30,7 +30,7 @@ test('fresh database: schema, categories and singleton user', () => {
   const db = openDb(':memory:');
   const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
     .all().map((r) => r.name);
-  assert.deepEqual(tables, ['categories', 'goals', 'habit_logs', 'habits', 'progress_events', 'steps', 'tasks', 'user']);
+  assert.deepEqual(tables, ['categories', 'goals', 'habit_logs', 'habits', 'progress_events', 'raids', 'steps', 'tasks', 'user']);
   assert.deepEqual(db.prepare(`SELECT id FROM categories ORDER BY ordre`).all().map((r) => r.id), CATEGORIES.map((c) => c.id));
   assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM user`).get().n, 1);
   for (const t of ['goals', 'steps', 'tasks', 'progress_events']) {
@@ -149,6 +149,9 @@ test('migration: a pre-routine database is upgraded in place, ledger intact', ()
     const { goalId } = seedGoal(db);
     insEvent(db, { goal_id: goalId, kind: 'session', delta_elo: 2, elo_after: 1002 });
     assert.throws(() => insEvent(db, { goal_id: goalId, reverts_id: 1, delta_elo: 0, elo_after: 1000 }), /UNIQUE/);
+    // É12: the user gains an empty gear, the raids table exists.
+    assert.equal(db.prepare(`SELECT gear FROM user WHERE id = 1`).get().gear, '{}');
+    assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM raids`).get().n, 0);
     db.close();
     openDb(file).close();   // idempotent once migrated
   } finally {

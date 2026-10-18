@@ -273,8 +273,25 @@ textarea.field-auto { field-sizing: content; resize: none; min-height: 0; }
 @keyframes rise { from { transform: translate(-50%, 8px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
 
+/* Sunday raid: the monster shakes under the assault, the damage floats up,
+   a beaten monster goes grey. */
+.raid-monster[data-won="true"], .raid-shake[data-won="true"] { filter: grayscale(1) brightness(0.7); }
+.raid-shake { animation: shake 0.45s steps(3) 2; }
+.raid-hit {
+  position: absolute;
+  top: 8px;
+  font-family: var(--font-pixel);
+  font-size: 28px;
+  color: var(--elo-gold);
+  text-shadow: 2px 2px 0 var(--elo-bg);
+  animation: hit 1.2s var(--ease-out) forwards;
+}
+
+@keyframes shake { 0%, 100% { transform: translateX(0); } 33% { transform: translateX(-6px); } 66% { transform: translateX(6px); } }
+@keyframes hit { from { transform: translateY(16px); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(-12px); opacity: 1; } }
+
 @media (prefers-reduced-motion: reduce) {
-  .check.on, .toast, .celebration-card { animation: none; }
+  .check.on, .toast, .celebration-card, .raid-shake, .raid-hit { animation: none; }
   .confetti { display: none; }
 }
 

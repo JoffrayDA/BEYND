@@ -82,9 +82,10 @@ Pour une routine :
 - Écran Progrès : courbes d'Elo par catégorie, historique, séries
 - Cocher une tâche ou une séance → XP + mise à jour Elo
 - Routines : habitudes hebdomadaires, semaines tenues, jalons, boss = série de semaines
+- Raid du dimanche, en solo : un monstre par semaine, chaque coche charge l'arme, l'assaut se lance le dimanche ; victoire = XP, trophée et accessoire pour l'avatar (jamais d'Elo)
 
 **v2**
-- Raids du dimanche entre potes : un monstre commun avec des points de vie, chaque tâche cochée dans la semaine lui inflige des dégâts, l'équipe l'achève le dimanche
+- Raids du dimanche entre potes (extension du raid solo) : un monstre commun avec des points de vie, chaque tâche cochée dans la semaine lui inflige des dégâts, l'équipe l'achève le dimanche
 - Collection de petits monstres (un par domaine)
 - Recalibrage communautaire des difficultés
 

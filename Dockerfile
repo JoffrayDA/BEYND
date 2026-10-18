@@ -4,13 +4,14 @@
 #   docker run -p 8787:8787 -v beynd-data:/data -e APP_PASSWORD=... beynd
 # No VOLUME instruction: Railway rejects it. Mount /data from the platform.
 
-# 1. Client build. It imports server/engine.js (no deps) and the design-system.
+# 1. Client build. It imports the pure rule modules server/engine.js and
+#    server/raid.js (no deps) and the design-system.
 FROM node:24-alpine AS client
 WORKDIR /app
 COPY client/package.json client/package-lock.json ./client/
 RUN cd client && npm ci
 COPY design-system ./design-system
-COPY server/engine.js ./server/engine.js
+COPY server/engine.js server/raid.js ./server/
 COPY client ./client
 RUN cd client && npm run build
 

@@ -9,6 +9,7 @@ import { withStart } from '../lib/progress.js';
 import { routineLine } from '../lib/goals.js';
 import { useTaskToggle } from '../components/useTaskToggle.jsx';
 import { LevelUpCard } from '../components/LevelUpCard.jsx';
+import { RaidCard } from '../components/RaidCard.jsx';
 
 export function Home({ state, setState, onNewGoal, onOpenGoal }) {
   const { user, life_elo: life, main_goal: main, quest } = state;
@@ -20,7 +21,7 @@ export function Home({ state, setState, onNewGoal, onOpenGoal }) {
     <div className="screen">
       {/* Character: avatar, level, XP, streak */}
       <section style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-        <Avatar level={user.level} />
+        <Avatar level={user.level} gear={user.gear} />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <PixelLabel color="var(--elo-gold)" style={{ fontSize: 12 }}>Niv. {user.level}</PixelLabel>
@@ -34,6 +35,8 @@ export function Home({ state, setState, onNewGoal, onOpenGoal }) {
           <PixelLabel>{user.xpInLevel} / {user.xpForNext} XP</PixelLabel>
         </div>
       </section>
+
+      {state.raid && <RaidCard raid={state.raid} today={state.today} user={user} setState={setState} />}
 
       {!main ? (
         <Card padding="20px">

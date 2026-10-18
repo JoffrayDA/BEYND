@@ -47,6 +47,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS user (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL DEFAULT 'Joueur',
+    gear TEXT NOT NULL DEFAULT '{}',       -- equipped accessories, { slot: id }
     created_at TEXT NOT NULL
   );
 
@@ -108,6 +109,23 @@ const SCHEMA = `
     UNIQUE (habit_id, day)
   );
 
+  -- Sunday raid, one per game week (Monday ISO date). Frozen when created:
+  -- species, HP, reward and bonus never change afterwards. The bonus XP of a
+  -- won raid counts in the XP total next to progress_events (no Elo, no goal).
+  CREATE TABLE IF NOT EXISTS raids (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES user(id),
+    week TEXT NOT NULL,
+    species TEXT NOT NULL REFERENCES categories(id),
+    hp INTEGER NOT NULL CHECK (hp > 0),
+    reward TEXT NOT NULL,                  -- accessory id won on victory
+    bonus_xp INTEGER NOT NULL CHECK (bonus_xp >= 0),
+    assault_at TEXT,
+    defeated_at TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (user_id, week)
+  );
+
   -- No ON DELETE CASCADE here on purpose: the ledger is append-only, so a
   -- goal that already produced events cannot be hard-deleted (archive it).
   ${EVENTS_TABLE}
@@ -140,13 +158,15 @@ export function openDb(path = join(__dirname, 'elo.db')) {
   return db;
 }
 
-// Bases created before routines (É9): goals gain kind / boss_weeks /
+// Bases created before raids (É12) gain user.gear (the raids table comes
+// with the schema). Bases created before routines (É9): goals gain kind / boss_weeks /
 // level_up_snoozed_until, and progress_events is rebuilt once because SQLite
 // cannot alter a CHECK. Old demo:xp rows (task kind, no task) become 'demo'.
 function migrate(db) {
   addColumn(db, 'goals', 'kind', `TEXT NOT NULL DEFAULT 'project' CHECK (kind IN ('project', 'routine'))`);
   addColumn(db, 'goals', 'boss_weeks', `INTEGER CHECK (boss_weeks BETWEEN ${BOSS_WEEKS_MIN} AND ${BOSS_WEEKS_MAX})`);
   addColumn(db, 'goals', 'level_up_snoozed_until', 'TEXT');
+  addColumn(db, 'user', 'gear', `TEXT NOT NULL DEFAULT '{}'`);
 
   const cols = db.prepare(`PRAGMA table_info(progress_events)`).all().map((c) => c.name);
   if (cols.includes('habit_id')) return;

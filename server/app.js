@@ -6,8 +6,9 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { createAuth } from './auth.js';
 import { analyzeGoal, validatePlan, CoachError, HAS_KEY } from './llm.js';
 import {
-  NotFound, Conflict, homeState, progressState, listGoals, goalDetail,
+  NotFound, Conflict, BadInput, homeState, progressState, listGoals, goalDetail,
   createGoal, updateGoal, toggleTask, toggleHabit, toggleMilestone, levelUpRoutine,
+  settleRaid, launchAssault, raidCollection, equip,
 } from './game.js';
 import { CATEGORIES } from './db.js';
 import { gain, tier, taskXp } from './engine.js';
@@ -97,11 +98,13 @@ export function createApp({
   });
 
   // Every toggle answers the same way: the events written (for the
-  // celebrations) and the new home state.
+  // celebrations) and the new home state. On a fighting Sunday a tick can
+  // also win the raid (or an untick take the win back): its event follows.
   const toggleRoute = (path, fn) => app.post(path, (c) => {
     const now = clock();
     const result = fn(db, idParam(c), { now });
-    return c.json({ ...result, state: homeState(db, now) });
+    const raid = settleRaid(db, { now });
+    return c.json({ ...result, events: [...result.events, ...raid], state: homeState(db, now) });
   });
   toggleRoute('/api/tasks/:id/toggle', toggleTask);
   toggleRoute('/api/habits/:id/toggle', toggleHabit);
@@ -111,6 +114,22 @@ export function createApp({
     const now = clock();
     const goal = levelUpRoutine(db, idParam(c), await body(c), { now });
     return c.json({ goal, state: homeState(db, now) });
+  });
+
+  // Sunday raid: the assault (once, on Sunday), the trophies and the gear.
+  app.post('/api/raid/assault', (c) => {
+    const now = clock();
+    const result = launchAssault(db, { now });
+    return c.json({ ...result, state: homeState(db, now) });
+  });
+
+  app.get('/api/raids', (c) => c.json(raidCollection(db, clock())));
+
+  app.post('/api/gear', async (c) => {
+    const b = await body(c);
+    const now = clock();
+    const gear = equip(db, { slot: String(b.slot ?? ''), item: b.item == null ? null : String(b.item) });
+    return c.json({ gear, state: homeState(db, now) });
   });
 
   app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
@@ -127,6 +146,7 @@ export function createApp({
   }
 
   app.onError((err, c) => {
+    if (err instanceof BadInput) return c.json({ error: err.message }, 400);
     if (err instanceof NotFound) return c.json({ error: err.message }, 404);
     if (err instanceof Conflict) return c.json({ error: err.message }, 409);
     console.error(err);

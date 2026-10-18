@@ -9,9 +9,14 @@ import {
   weekStart, weekStreak, addDays, sessionEvents, milestoneEvent, canLevelUp, levelUpDifficulty,
   DIFFICULTY_MAX, PER_WEEK_MAX,
 } from './engine.js';
+import {
+  MONSTERS, ACCESSORIES, SLOTS, plannedXp, raidHp, raidBonus, pickReward, pickSpecies,
+  assaultDay, raidStatus, raidDamage,
+} from './raid.js';
 
 export class NotFound extends Error {}
 export class Conflict extends Error {}
+export class BadInput extends Error {}
 
 const QUEST_TASKS_PER_GOAL = 3;
 const CATEGORY_NAMES = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.name]));
@@ -300,10 +305,18 @@ function doneDates(db) {
     UNION ALL SELECT day FROM habit_logs`).all().map((r) => r.d);
 }
 
+// XP = the ledger plus the bonus of every raid won (raids carry no Elo and
+// no goal, so their bonus lives in the raids table).
+function totalXp(db) {
+  const { xp } = db.prepare(`SELECT COALESCE(SUM(delta_xp), 0) AS xp FROM progress_events`).get();
+  const { bonus } = db.prepare(`SELECT COALESCE(SUM(bonus_xp), 0) AS bonus FROM raids WHERE defeated_at IS NOT NULL`).get();
+  return xp + bonus;
+}
+
 function userProfile(db, today) {
   const u = db.prepare(`SELECT id, name FROM user WHERE id = 1`).get();
-  const { xp } = db.prepare(`SELECT COALESCE(SUM(delta_xp), 0) AS xp FROM progress_events`).get();
-  return { ...u, xp, ...level(xp), streak: streak(doneDates(db), today) };
+  const xp = totalXp(db);
+  return { ...u, xp, ...level(xp), streak: streak(doneDates(db), today), gear: gearOf(db) };
 }
 
 const eventsAsc = (db) =>
@@ -353,6 +366,7 @@ export function homeState(db, now) {
     quest: quest(db, today),
     main_goal: main ? goalSummary(db, main, today) : null,
     level_ups: levelUps(db, today),
+    raid: raidState(db, now),
   };
 }
 
@@ -374,6 +388,11 @@ export function progressState(db, now) {
     const d = day(localDay(new Date(e.created_at)));
     d.elo_delta = round1(d.elo_delta + e.delta_elo);
     d.xp += e.delta_xp;
+  }
+  for (const r of db.prepare(`SELECT species, bonus_xp, defeated_at FROM raids WHERE defeated_at IS NOT NULL`).all()) {
+    const d = day(localDay(new Date(r.defeated_at)));
+    d.xp += r.bonus_xp;
+    d.tasks.push({ label: `Raid : ${MONSTERS[r.species].name} vaincu`, goal_title: null, category_id: r.species });
   }
   const ticked = db.prepare(`
     SELECT t.done_on, t.label, g.title AS goal_title, g.category_id FROM tasks t
@@ -657,7 +676,7 @@ export function grantDemoXp(db, amount, { now }) {
   const goal = db.prepare(`
     SELECT * FROM goals WHERE status != 'archived' ORDER BY is_main DESC, created_at, id LIMIT 1`).get();
   if (!goal) throw new Conflict('create a goal first');
-  const { xp } = db.prepare(`SELECT COALESCE(SUM(delta_xp), 0) AS xp FROM progress_events`).get();
+  const xp = totalXp(db);
   let delta = amount;
   if (delta === undefined) {
     delta = level(xp).level * XP_PER_LEVEL - 5 - xp;
@@ -669,4 +688,153 @@ export function grantDemoXp(db, amount, { now }) {
     VALUES (?, ?, 'demo', ?, 0, ?, ?)
   `).run(goal.category_id, goal.id, delta, categoryElo(db, goal.category_id), now.toISOString());
   return { granted: delta, user: userProfile(db, localDay(now)) };
+}
+
+// --- raid ------------------------------------------------------------------
+// Rules in raid.js. The raid of the week is created on first read (frozen:
+// species, HP, reward, bonus), charged by the week's net XP, opened on Sunday
+// by the assault, then settled after every tick until the week ends.
+
+const raidRow = (db, week) => db.prepare(`SELECT * FROM raids WHERE user_id = 1 AND week = ?`).get(week);
+
+const ownedAccessories = (db) =>
+  [...new Set(db.prepare(`SELECT reward FROM raids WHERE defeated_at IS NOT NULL ORDER BY week`).all().map((r) => r.reward))];
+
+function gearOf(db) {
+  try {
+    const g = JSON.parse(db.prepare(`SELECT gear FROM user WHERE id = 1`).get()?.gear ?? '{}');
+    return Object.fromEntries(SLOTS.filter((s) => ACCESSORIES[g[s]]?.slot === s).map((s) => [s, g[s]]));
+  } catch {
+    return {};
+  }
+}
+const saveGear = (db, gear) => db.prepare(`UPDATE user SET gear = ? WHERE id = 1`).run(JSON.stringify(gear));
+
+// Net XP of one game week (Monday → Sunday): the weapon's charge. Dev XP
+// (npm run demo:xp) never charges it.
+function weekXp(db, week) {
+  const end = addDays(week, 6);
+  const since = new Date(`${addDays(week, -1)}T00:00:00Z`).toISOString();
+  let xp = 0;
+  for (const e of db.prepare(`SELECT kind, delta_xp, created_at FROM progress_events WHERE created_at >= ?`).all(since)) {
+    const d = localDay(new Date(e.created_at));
+    if (d >= week && d <= end && e.kind !== 'demo') xp += e.delta_xp;
+  }
+  return xp;
+}
+
+// No active goal, no raid (nothing to fight with).
+function ensureRaid(db, today, now) {
+  const week = weekStart(today);
+  const existing = raidRow(db, week);
+  if (existing) return existing;
+  const active = db.prepare(`SELECT * FROM goals WHERE status = 'active' ORDER BY created_at, id`).all();
+  if (active.length === 0) return null;
+
+  const species = pickSpecies({
+    mainCategory: active.find((g) => g.is_main)?.category_id ?? null,
+    activeCategories: active.map((g) => g.category_id),
+  });
+  const prev = db.prepare(`SELECT hp, defeated_at FROM raids WHERE user_id = 1 AND week < ? ORDER BY week DESC LIMIT 1`).get(week);
+  const habits = db.prepare(`SELECT h.xp, h.per_week FROM habits h JOIN goals g ON g.id = h.goal_id WHERE g.status = 'active'`).all();
+  const projects = active.filter((g) => g.kind === 'project').map((g) => ({ task_xp: taskXp(g.difficulty) }));
+  const hp = raidHp({
+    previous: prev ? { hp: prev.hp, won: prev.defeated_at != null } : null,
+    lastWeekXp: weekXp(db, addDays(week, -7)),
+    planned: plannedXp({ habits, projects }),
+  });
+  db.prepare(`
+    INSERT OR IGNORE INTO raids (week, species, hp, reward, bonus_xp, created_at) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(week, species, hp, pickReward(species, ownedAccessories(db)), raidBonus(hp), now.toISOString());
+  return raidRow(db, week);
+}
+
+function raidView(db, raid, today) {
+  const charge = Math.max(0, weekXp(db, raid.week));
+  const damage = raidDamage({ charge, assaultAt: raid.assault_at });
+  return {
+    week: raid.week,
+    species: raid.species,
+    name: MONSTERS[raid.species].name,
+    hp: raid.hp,
+    charge,
+    damage,
+    hp_left: Math.max(0, raid.hp - damage),
+    status: raidStatus({ week: raid.week, today, assaultAt: raid.assault_at, defeatedAt: raid.defeated_at }),
+    assault_day: assaultDay(raid.week),
+    reward: { id: raid.reward, ...ACCESSORIES[raid.reward] },
+    bonus_xp: raid.bonus_xp,
+  };
+}
+
+export function raidState(db, now) {
+  const today = localDay(now);
+  const raid = ensureRaid(db, today, now);
+  return raid ? raidView(db, raid, today) : null;
+}
+
+// Win once the assault is launched and the week's XP covers the HP; an
+// untick that drops back under the HP takes the win back (bonus, reward,
+// and the accessory if it was equipped and is owned no more).
+function settle(db, now) {
+  const raid = raidRow(db, weekStart(localDay(now)));
+  if (!raid?.assault_at) return [];
+  const reached = weekXp(db, raid.week) >= raid.hp;
+  const info = { name: MONSTERS[raid.species].name, species: raid.species, reward: { id: raid.reward, ...ACCESSORIES[raid.reward] } };
+  if (reached && !raid.defeated_at) {
+    db.prepare(`UPDATE raids SET defeated_at = ? WHERE id = ?`).run(now.toISOString(), raid.id);
+    return [{ kind: 'raid', delta_xp: raid.bonus_xp, delta_elo: 0, ...info }];
+  }
+  if (!reached && raid.defeated_at) {
+    db.prepare(`UPDATE raids SET defeated_at = NULL WHERE id = ?`).run(raid.id);
+    const owned = new Set(ownedAccessories(db));
+    const gear = gearOf(db);
+    for (const slot of SLOTS) if (gear[slot] && !owned.has(gear[slot])) delete gear[slot];
+    saveGear(db, gear);
+    return [{ kind: 'raid', delta_xp: -raid.bonus_xp, delta_elo: 0, ...info }];
+  }
+  return [];
+}
+
+export const settleRaid = (db, { now }) => transaction(db, () => settle(db, now));
+
+// Sunday only, once: the whole charge hits at once.
+export function launchAssault(db, { now }) {
+  return transaction(db, () => {
+    const today = localDay(now);
+    const raid = ensureRaid(db, today, now);
+    if (!raid) throw new Conflict('no raid this week');
+    const status = raidStatus({ week: raid.week, today, assaultAt: raid.assault_at, defeatedAt: raid.defeated_at });
+    if (status === 'waiting') throw new Conflict('the assault opens on Sunday');
+    if (status !== 'ready') throw new Conflict('assault already launched');
+    db.prepare(`UPDATE raids SET assault_at = ? WHERE id = ?`).run(now.toISOString(), raid.id);
+    const events = settle(db, now);
+    return { events, raid: raidView(db, raidRow(db, raid.week), today) };
+  });
+}
+
+// Trophies (raids won, newest first), accessories owned, gear equipped.
+export function raidCollection(db, now) {
+  const week = weekStart(localDay(now));
+  const trophies = db.prepare(`SELECT week, species, hp, reward, defeated_at FROM raids WHERE defeated_at IS NOT NULL ORDER BY week DESC`).all()
+    .map((r) => ({ ...r, name: MONSTERS[r.species].name, reward: { id: r.reward, ...ACCESSORIES[r.reward] } }));
+  const { fled } = db.prepare(`SELECT COUNT(*) AS fled FROM raids WHERE defeated_at IS NULL AND week < ?`).get(week);
+  return { trophies, fled, owned: ownedAccessories(db), gear: gearOf(db) };
+}
+
+// Equip an owned accessory in its slot, or empty the slot (item null).
+export function equip(db, { slot, item = null }) {
+  if (!SLOTS.includes(slot)) throw new BadInput('unknown slot');
+  return transaction(db, () => {
+    const gear = gearOf(db);
+    if (item == null) {
+      delete gear[slot];
+    } else {
+      if (ACCESSORIES[item]?.slot !== slot) throw new BadInput('item does not fit this slot');
+      if (!ownedAccessories(db).includes(item)) throw new Conflict('item not owned');
+      gear[slot] = item;
+    }
+    saveGear(db, gear);
+    return gear;
+  });
 }

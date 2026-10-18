@@ -74,7 +74,7 @@ export function App() {
         {tab === 'home' && <Home state={state} setState={setState} onNewGoal={() => go('goals', { create: true })} onOpenGoal={(id) => go('goals', { open: id })} />}
         {tab === 'goals' && <Goals key={JSON.stringify(goalsIntent)} state={state} setState={setState} refresh={refresh} intent={goalsIntent} />}
         {tab === 'progress' && <Progress />}
-        {tab === 'profile' && <Profile state={state} onLogout={() => { setState(null); setLocked(true); setTab('home'); }} />}
+        {tab === 'profile' && <Profile state={state} setState={setState} onLogout={() => { setState(null); setLocked(true); setTab('home'); }} />}
       </main>
       <nav className="tabbar" aria-label="Navigation principale">
         {TABS.map(([id, label]) => (

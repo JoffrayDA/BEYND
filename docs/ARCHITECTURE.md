@@ -26,7 +26,7 @@ La clé `GEMINI_API_KEY` reste dans `server/.env` (ignoré par git). Elle n'est 
 ## 2. Modèle de données
 
 ```
-user              id, name, created_at
+user              id, name, gear (JSON { slot: accessoire }), created_at
 categories        id (slug), name, ordre                        -- préremplie
 goals             id, user_id, category_id, kind ('project' | 'routine'), title,
                   prompt (texte saisi), difficulty (400–2200), coach_intro,
@@ -44,13 +44,16 @@ progress_events   id, user_id, category_id, goal_id, step_id, task_id, habit_id,
                         'week_bonus' | 'milestone' | 'demo'),
                   delta_xp, delta_elo (REAL), elo_after (REAL),
                   reverts_id (NULL | id de l'événement annulé), created_at
+raids             id, user_id, week (lundi ISO), species (= catégorie), hp,
+                  reward (accessoire), bonus_xp, assault_at, defeated_at,
+                  created_at, UNIQUE (user_id, week)
 ```
 
 Écarts par rapport à l'esquisse du brief (§7) :
 - **Pas de table `user_category_elo` ni de colonnes `xp`, `niveau` ou `série` sur `user`.** Tout est dérivé de `progress_events` : c'est la seule source de vérité. Ça rend l'annulation d'une coche exacte et donne les courbes gratuitement. On ajoutera un cache plus tard si les performances l'exigent.
   - Elo d'une catégorie = `1000 + Σ delta_elo`.
   - Courbe = suite des `elo_after`.
-  - XP = `Σ delta_xp`.
+  - XP = `Σ delta_xp` + `Σ bonus_xp` des raids gagnés. Le bonus de raid vit dans `raids` : un raid n'a ni objectif ni Elo, et l'ajouter au journal aurait demandé de reconstruire la table (contrainte `CHECK`, `goal_id` obligatoire).
 - Catégories initiales : Tech, Langues, Sport, Carrière, Créatif, Autre. La liste est fermée et le validateur LLM la vérifie.
 - Le premier objectif créé devient automatiquement `is_main`.
 - **Migration** : SQLite ne sait pas modifier une contrainte `CHECK`. Si la base existante ne connaît pas encore les nouveaux `kind`, `progress_events` est reconstruite une fois (nouvelle table, copie, renommage) dans une transaction. Les colonnes `kind` et `boss_weeks` de `goals` sont ajoutées avec `addColumn`, et les objectifs existants deviennent des projets. Les lignes écrites par `npm run demo:xp` passent au `kind` `demo`.
@@ -138,6 +141,19 @@ La semaine va du lundi au dimanche, en journées de jeu. Notations supplémentai
 - Pas de perte d'Elo pour une semaine ratée : seule la série de semaines repart de zéro. La baisse par inactivité reste hors MVP.
 - Série de jours (voir XP, niveau, série) : un jour compte s'il a au moins une tâche **ou une séance**.
 
+### Raid du dimanche (`server/raid.js`, pur, testé)
+Un monstre par semaine de jeu (lundi → dimanche). Il ne touche **jamais** à l'Elo.
+- **Création** : à la première lecture de la semaine, s'il existe au moins un objectif actif. Tout est figé à ce moment-là : espèce, PV, récompense, bonus.
+  - Espèce = catégorie de l'objectif principal, sinon la catégorie la plus fréquente parmi les objectifs actifs, sinon `autre`. Six monstres : Golem de code (Tech), Spectre bavard (Langues), Troll des cavernes (Sport), Dragon de bureau (Carrière), Chimère d'encre (Créatif), Slime glouton (Autre).
+  - PV : le monstre précédent ×1,1 s'il a été battu, ×0,9 s'il s'est enfui. Pour le tout premier raid : 75 % de l'XP de la semaine précédente, ou, si elle est vide, 75 % de l'XP prévue (chaque habitude à sa fréquence + 5 tâches par projet actif). Bornes 50–5000, arrondi à 5.
+  - Récompense : le premier accessoire de l'espèce pas encore possédé, sinon n'importe quel accessoire nouveau, sinon le premier de l'espèce (seul le trophée est alors nouveau). Bonus = 20 % des PV en XP.
+- **Lundi → samedi** : intouchable. Chaque coche **charge l'arme** : charge = XP nette de la semaine (décocher décharge ; l'XP de `demo:xp` ne compte pas).
+- **Dimanche** : « Lancer l'assaut », une seule fois. L'arme frappe toute sa charge d'un coup. Ensuite, chaque coche du dimanche frappe en direct, jusqu'à la fin de la journée de jeu (lundi 4 h). Dégâts = charge dès que l'assaut est lancé.
+- **Victoire** dès que l'XP de la semaine ≥ PV : bonus d'XP, trophée et accessoire. Une décoche qui repasse sous les PV reprend la victoire (bonus, accessoire, et il est déséquipé s'il ne reste plus possédé). Après la semaine, l'issue est figée.
+- **Défaite** : le monstre s'enfuit lundi, sans aucune pénalité.
+- États : `waiting` (lun–sam) → `ready` (dimanche) → `fighting` (assaut lancé) → `won`, ou `fled` une fois la semaine passée.
+- **Accessoires** (8, un emplacement chacun) : casque, couronne, bandeau (tête) ; cape (dos) ; épée, bâton de mage (main) ; bouclier, grimoire (autre main).
+
 ### Elo de vie
 Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 1000 s'il n'y en a aucune.
 
@@ -184,6 +200,9 @@ Moyenne des Elo des catégories qui ont au moins un objectif non archivé. Vaut 
 | GET | `/api/session` | Public. `{ required, authenticated }` |
 | POST | `/api/login` | Public. `{ password }` → cookie de session ; 401 si faux, 429 si trop d'essais |
 | POST | `/api/logout` | Efface le cookie |
+| POST | `/api/raid/assault` | Dimanche, une fois : lance l'assaut. Renvoie `{ events, raid, state }` ; 409 hors dimanche, sans raid ou déjà lancé |
+| GET | `/api/raids` | Trophées (raids gagnés), nombre de monstres enfuis, accessoires possédés, équipement |
+| POST | `/api/gear` | `{ slot, item }` équipe un accessoire possédé, `item: null` vide l'emplacement. 400 si l'emplacement ou l'accessoire ne colle pas, 409 s'il n'est pas possédé |
 | GET | `/api/state` | Accueil : profil (XP, niveau, série), Elo de vie + courbe, Elo par catégorie, Quête du jour, objectif principal |
 | POST | `/api/goals/analyze` | `{ prompt }` → proposition du coach (rien n'est persisté) |
 | POST | `/api/goals` | Proposition éventuellement modifiée par l'utilisateur → création en transaction |
@@ -213,7 +232,8 @@ Précisions d'implémentation :
 ## 6. Front
 
 - Onglets du bas : **Accueil · Objectifs · Progrès · Profil**.
-- **Profil** : avatar, niveau, XP total, Elo de vie, série et record, objectifs en cours, boss vaincus (projets et routines), jours d'activité ; réglages : mode du coach, déconnexion si un mot de passe est actif. Logique pure dans `client/src/lib/profile.js`, testée.
+- **Raid** : carte du monstre en haut de l'Accueil (sprite, PV, charge de l'arme, récompense). Le dimanche, « Lancer l'assaut » ouvre l'écran d'assaut : le monstre tremble, les dégâts s'affichent et les PV fondent. Une victoire, par l'assaut ou par une coche, ouvre la célébration « Raid gagné ». Toutes les réponses de coche incluent l'événement `raid` éventuel. Logique pure dans `client/src/lib/raid.js` ; pixel art (monstres, héros, accessoires) en données dans `components/sprites.js`, rendu par `PixelArt`.
+- **Profil** : avatar équipé, Équipement (un rang de puces par emplacement ; toucher l'accessoire porté le retire), Trophées de raid. Avatar, niveau, XP total, Elo de vie, série et record, objectifs en cours, boss vaincus (projets et routines), jours d'activité ; réglages : mode du coach, déconnexion si un mot de passe est actif. Logique pure dans `client/src/lib/profile.js`, testée.
 - **Icônes PWA** : l'aventurier pixel sur fond sombre, générées sans dépendance par `npm run icons` (`client/scripts/icons.mjs`) dans `client/public/` (192, 512, maskable, apple-touch, favicon SVG).
 - **Démo sur le Wi-Fi** : `npm run lan` dans `client/` (Vite avec `--host`). Le téléphone ouvre `http://<IP du PC>:5173`. En HTTP sur IP locale, le service worker ne s'installe pas (contexte non sécurisé) : l'app marche, mais ne s'installe pas comme appli.
 - Thème `elo` : palette du brief (§8), polices Archivo et Silkscreen. Silkscreen est réservée aux labels pixel (niveau, XP, badges). Le thème est défini dans `design-system/tokens/theme-elo.css` et appliqué par `data-theme="elo"` sur `<html>`.
@@ -274,8 +294,9 @@ Précisions d'implémentation :
 | É8 | Objectifs + Progrès | MVP complet ✔ |
 | É9 | Routines : schéma + migration, moteur, coach, API, puis front (création, quête, détail) | Lecture et callisthénie jouables de bout en bout ✔ |
 | É10 | Nom BEYND, mot de passe, Profil, icônes PWA, démo sur le Wi-Fi, README | Prêt pour la démo ✔ |
-| É11 | Dockerfile (Node 24 alpine, multi-étapes, utilisateur `node`, volume `/data`, healthcheck), sauvegarde à chaud, guide Coolify ([`DEPLOY.md`](DEPLOY.md)) | Image testée en local ✔ ; mise en ligne côté utilisateur |
+| É11 | Dockerfile (Node 24 alpine, multi-étapes, utilisateur `node`, volume `/data`, healthcheck), sauvegarde à chaud, guide Coolify ([`DEPLOY.md`](DEPLOY.md)) | Image testée en local ✔ ; en ligne sur Railway ✔ |
+| É12 | Raid du dimanche solo : monstre de la semaine, charge, assaut, trophées, accessoires sur l'avatar | Semaine complète testée, curl sur une copie de la base ✔ |
 
 ## 8. Post-MVP (ne pas builder maintenant)
 
-Baisse d'Elo par inactivité, raids du dimanche, collection de monstres, recalibrage communautaire, comptes et multi-user (→ Postgres). Le mot de passe unique d'É10 n'est qu'un verrou.
+Baisse d'Elo par inactivité, raids **entre potes** (le raid solo d'É12 en est la base : PV = somme de l'équipe, dégâts par membre), recalibrage communautaire, recalibrage communautaire, comptes et multi-user (→ Postgres). Le mot de passe unique d'É10 n'est qu'un verrou.

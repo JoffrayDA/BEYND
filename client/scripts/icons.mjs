@@ -1,28 +1,13 @@
-// Generates the PWA icons in public/ from the pixel adventurer (same sprite
-// as components/Avatar.jsx). No dependency: PNGs are encoded by hand.
+// Generates the PWA icons in public/ from the pixel adventurer
+// (components/sprites.js). No dependency: PNGs are encoded by hand.
 // Run: node scripts/icons.mjs
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
+import { HERO, PALETTE } from '../src/components/sprites.js';
 
-const SPRITE = [
-  '................',
-  '.....KKKKKK.....',
-  '....KHHHHHHK....',
-  '....KHHHHHHK....',
-  '....KSSSSSSK....',
-  '....KSESSESK....',
-  '....KSSSSSSK....',
-  '.....KSSSSK.....',
-  '....KGGGGGGK....',
-  '...KGGGYYGGGK...',
-  '..KSKGGGGGGKSK..',
-  '..KSKGGGGGGKSK..',
-  '...K.KBBBBK.K...',
-  '.....KBBBBK.....',
-  '.....KB..BK.....',
-  '.....KK..KK.....',
-];
-const COLORS = { K: '#0F0E0D', H: '#5C7A3A', S: '#E8B98A', E: '#1C1B19', Y: '#F2B24C', B: '#4A4842', G: '#9BD15A' };
+// Same sprite as the in-app avatar, tunic in the starting green.
+const SPRITE = HERO.rows;
+const COLORS = { ...PALETTE, ...HERO.colors, G: '#9BD15A' };
 const BG = '#1C1B19';
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 

@@ -21,6 +21,9 @@ export function celebrationFor({ events, before, after, goalTitle, stepTitle }) 
   const xp = events.reduce((a, e) => a + e.delta_xp, 0);
   const levelUp = after.level > before.level ? after.level : null;
 
+  // Sunday raid won by this tick (or by the assault): the biggest moment.
+  const raid = events.find((e) => e.kind === 'raid' && e.delta_xp > 0);
+  if (raid) return { kind: 'raid', title: 'Raid gagné', subtitle: raid.name, elo, xp, bonus: 0, levelUp, reward: raid.reward };
   if (events.some((e) => e.kind === 'boss' && e.delta_elo > 0)) {
     // The boss tick also closes the last step: both bonuses count.
     return { kind: 'boss', title: 'Boss vaincu', subtitle: goalTitle, elo, xp, bonus: sum('step_bonus') + sum('boss'), levelUp };
